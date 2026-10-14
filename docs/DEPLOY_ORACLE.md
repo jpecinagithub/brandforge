@@ -100,7 +100,7 @@ Verify the API answers on loopback (not exposed publicly — nginx is the front 
 ```bash
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
 # Purpose: smoke-test the API on loopback.
-curl -s http://127.0.0.1:3013/api/v1/health | head -c 300; echo
+curl -s http://127.0.0.1:3013/health | head -c 300; echo
 ```
 
 If it fails, read the logs before anything else:
@@ -162,6 +162,16 @@ block, **before** `location /`):
         proxy_read_timeout 120s;
         client_max_body_size 30m;
     }
+
+    # BrandForge AI — health check (Fastify serves /health at root)
+    location = /brandforge/health {
+        proxy_pass http://127.0.0.1:3013/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 ```
 
 **Step 3 — test and reload:**
@@ -170,7 +180,7 @@ block, **before** `location /`):
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
 # Purpose: validate nginx config, then reload without dropping connections.
 sudo nginx -t && sudo systemctl reload nginx
-curl -s https://jpecina.duckdns.org/brandforge/api/v1/health | head -c 300; echo
+curl -s https://jpecina.duckdns.org/brandforge/api/health | head -c 300; echo
 ```
 
 > If `nginx -t` fails, fix the error before reloading — never reload a broken
