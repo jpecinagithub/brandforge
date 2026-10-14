@@ -158,7 +158,7 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[190px_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[190px_minmax(0,1fr)]">
         <Card>
           <CardContent className="space-y-2">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -191,7 +191,7 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
               <iframe
                 title={selected?.name ?? t('workspace.landingTitle')}
                 srcDoc={html}
-                sandbox=""
+                sandbox="allow-same-origin"
                 className="h-[620px] w-full border-0 bg-white"
               />
             )}
