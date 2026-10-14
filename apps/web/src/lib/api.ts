@@ -46,13 +46,16 @@ function toApiError(body: unknown, status: number): ApiError {
  * - JSON request/response with the `{error:{code,message}}` envelope parsed into ApiError.
  */
 export async function api<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  // Avoid a double /api when VITE_API_URL already ends with /api and the
+  // route path also starts with /api/ (e.g. https://host/brandforge/api + /api/v1/...).
+  const normalizedPath = baseUrl.endsWith('/api') && path.startsWith('/api/') ? path.slice(4) : path;
   const headers = new Headers(opts.headers);
   const isFormData = opts.body instanceof FormData;
   if (opts.body !== undefined && !isFormData && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const res = await fetch(`${baseUrl}${path}`, {
+  const res = await fetch(`${baseUrl}${normalizedPath}`, {
     ...opts,
     headers,
     credentials: 'include',
