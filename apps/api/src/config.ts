@@ -26,6 +26,9 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
   cookieSecure: (process.env.NODE_ENV ?? 'development') === 'production',
+  // Cross-origin SPA (Vercel) + API needs SameSite=None in production.
+  cookieSameSite: (process.env.COOKIE_SAMESITE ??
+    ((process.env.NODE_ENV ?? 'development') === 'production' ? 'none' : 'lax')) as 'lax' | 'none' | 'strict',
   sessionTtlDays: int('SESSION_TTL_DAYS', 30),
   storagePath: process.env.STORAGE_PATH ?? './storage',
   mailTransport: (process.env.MAIL_TRANSPORT ?? 'maildir') as 'maildir' | 'smtp',

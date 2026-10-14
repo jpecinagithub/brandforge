@@ -70,7 +70,7 @@ function setSessionCookie(reply: FastifyReply, token: string) {
   reply.setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
     path: '/',
-    sameSite: 'lax',
+    sameSite: config.cookieSameSite,
     secure: config.cookieSecure,
     maxAge: config.sessionTtlDays * 86_400,
   });
