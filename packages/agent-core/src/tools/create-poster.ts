@@ -18,7 +18,10 @@ const argsSchema = z.object({
   title: z.string().trim().min(1).max(200),
   subtitle: z.string().trim().max(300).optional(),
   imagePrompt: z.string().trim().min(1).max(2000).optional(),
-  brandKitId: z.string().uuid().optional(),
+  // Accept any string: resolved to a UUID below, falling back to the
+  // project's default brand kit when missing/invalid. The LLM sometimes
+  // hallucinates IDs; failing hard on that is worse than using the default.
+  brandKitId: z.string().trim().max(200).optional(),
 });
 
 type Args = z.infer<typeof argsSchema>;
@@ -35,7 +38,10 @@ export const createPosterTool: AgentTool<Args> = {
     await assertProjectAccess(ctx);
 
     let kit: { colors: unknown; fonts: unknown; tone: string } | null = null;
-    if (a.brandKitId) {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    // Only look up when it's a plausible UUID; otherwise fall through to the
+    // project's default brand kit (the LLM sometimes hallucinates IDs).
+    if (a.brandKitId && UUID_RE.test(a.brandKitId)) {
       const [row] = await ctx.db
         .select()
         .from(brandKits)
@@ -43,7 +49,8 @@ export const createPosterTool: AgentTool<Args> = {
       if (row && row.projectId === ctx.projectId) {
         kit = { colors: row.colors, fonts: row.fonts, tone: row.tone };
       }
-    } else {
+    }
+    if (!kit) {
       const [row] = await ctx.db
         .select()
         .from(brandKits)
