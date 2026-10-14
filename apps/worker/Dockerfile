@@ -30,9 +30,9 @@ RUN npm run build --workspace=@brandforge/shared \
   && npm run build --workspace=@brandforge/agent-core \
   && npm run build --workspace=@brandforge/agent-server \
   && npm run build --workspace=@brandforge/worker
-# Reinstall prod-only deps instead of `npm prune --workspace` (prune wrongly
-# drops nested prod deps like drizzle-orm; see commit history).
-RUN npm ci --omit=dev --no-audit --no-fund
+# Prune dev deps (no --workspace filter: it wrongly drops nested prod deps
+# like drizzle-orm; plain prune respects the full tree).
+RUN npm prune --omit=dev
 
 # ---------- runtime ----------
 FROM node:24-slim AS runtime
