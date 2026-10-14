@@ -21,7 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Input, Spinner } from '@brandforge/ui';
 import { AlertCircle, Check, Circle, RotateCcw, Wrench, X, XCircle } from 'lucide-react';
-import { baseUrl, get, post } from '@/lib/api';
+import { apiUrl, get, post } from '@/lib/api';
 import type { AgentRun, AgentStep, RunState } from '@brandforge/shared';
 import { isKnownRunState, isRunActive, runStateLabelKey, runStateTone } from './agentUi';
 
@@ -238,7 +238,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
     if (finishedRef.current) return;
     esRef.current?.close();
     setStreamError(false);
-    const es = new EventSource(`${baseUrl}/api/v1/agent/runs/${runId}/events`, { withCredentials: true });
+    const es = new EventSource(apiUrl(`/api/v1/agent/runs/${runId}/events`), { withCredentials: true });
     esRef.current = es;
     es.onmessage = (e) => handleEvent(e.data);
     es.onerror = () => {
