@@ -210,7 +210,12 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
   const hydrate = useCallback(async () => {
     try {
       const res = await get<{ run: AgentRun; steps: AgentStep[] }>(`/api/v1/agent/runs/${runId}`);
-      setRunState(res.run.state);
+      if (res.run.state && isKnownRunState(res.run.state)) {
+        setRunState(res.run.state);
+        // Run already terminal: don't subscribe to SSE (server closes it
+        // immediately, which EventSource reports as an error).
+        if (!isRunActive(res.run.state)) finishedRef.current = true;
+      }
       setCompletedSteps(res.run.completedSteps);
       setTotalSteps(res.run.totalSteps);
       setError(res.run.error);
