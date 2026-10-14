@@ -1,0 +1,937 @@
+/**
+ * Orchestrator — drives an agent run from its current state to a terminal
+ * state (completed / failed / cancelled) or a parked state (waiting_approval).
+ *
+ * - The agent_runs table IS the queue (ADR-0006); HTTP handlers only mutate
+ *   rows via startRun / cancelRun / resumeRun / approveRun, the worker calls
+ *   executeRun(runId).
+ * - Every state transition goes through assertTransition (illegal ones throw).
+ * - Steps run in topological levels; independent steps in a level run
+ *   concurrently (Promise.allSettled). Each step: timeout, 2 retries with
+ *   backoff, tool-call idempotency on (stepId, tool, argsHash).
+ * - Budget guard: the planner's estimate is checked before running, every
+ *   generate-category step is checked before executing, and generate_image
+ *   checks again inside the tool. Over budget → waiting_approval, never a
+ *   silent spend.
+ * - No infinite loops: maxSteps (planner), maxAttempts (resume),
+ *   stepTimeoutMs / runTimeoutMs (timeouts).
+ */
+import { and, eq } from 'drizzle-orm';
+import {
+  AgentPlanSchema,
+  type AgentEventType,
+  type AgentPlan,
+  type PlanStep,
+  type RunState,
+} from '@brandforge/shared';
+import {
+  agentRuns,
+  agentSteps,
+  agentToolCalls,
+  brandKits,
+  projects,
+  type AgentRun as AgentRunRow,
+  type Db,
+} from '@brandforge/database';
+import { assertTransition } from './state-machine.js';
+import { topologicalLevels } from './graph.js';
+import { planRun, PlannerError } from './planner.js';
+import { BUDGET_NOT_AFFORDABLE, stableHash } from './tools/helpers.js';
+import type {
+  AgentTool,
+  BudgetPort,
+  ConversationPort,
+  MemoryStore,
+  ModelRouter,
+  OpenRouterClient,
+  OrchestratorConfig,
+  OrchestratorDeps,
+  PortFactories,
+  StoragePort,
+  ToolContext,
+  ToolRegistry,
+  ToolResult,
+  TokenUsage,
+} from './types.js';
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+export class OrchestratorError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OrchestratorError';
+  }
+}
+
+export class RunNotFoundError extends OrchestratorError {
+  constructor(runId: string) {
+    super(`Agent run not found: ${runId}`);
+    this.name = 'RunNotFoundError';
+  }
+}
+
+export class ResumeLimitError extends OrchestratorError {
+  constructor(maxAttempts: number) {
+    super(`Run exceeded the maximum of ${maxAttempts} attempts`);
+    this.name = 'ResumeLimitError';
+  }
+}
+
+export class StepFailedError extends OrchestratorError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StepFailedError';
+  }
+}
+
+/** Internal control-flow signals (never escape executeRun). */
+class RunCancelledSignal extends Error {
+  constructor() {
+    super('Run was cancelled');
+    this.name = 'RunCancelledSignal';
+  }
+}
+class BudgetParkedSignal extends Error {
+  constructor() {
+    super('Run parked in waiting_approval');
+    this.name = 'BudgetParkedSignal';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Small utilities
+// ---------------------------------------------------------------------------
+type EmitFn = (type: AgentEventType, payload: Record<string, unknown>) => Promise<void>;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new OrchestratorError(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
+  maxSteps: 25,
+  stepTimeoutMs: 120000,
+  runTimeoutMs: 300000,
+  defaultBudgetUsd: 2,
+  maxAttempts: 3,
+};
+
+// ---------------------------------------------------------------------------
+// Orchestrator
+// ---------------------------------------------------------------------------
+export interface StartRunParams {
+  userId: string;
+  workspaceId: string;
+  projectId: string;
+  conversationId?: string;
+  input: string;
+  idempotencyKey?: string;
+  maxSteps?: number;
+  budgetUsd?: number;
+  language?: 'en' | 'es';
+}
+
+interface StepExecutionContext {
+  db: Db;
+  userId: string;
+  workspaceId: string;
+  projectId: string;
+  runId: string;
+  language: 'en' | 'es';
+  openrouter: OpenRouterClient;
+  router: ModelRouter;
+  budget: BudgetPort;
+  storage: StoragePort;
+  conversation: ConversationPort;
+  memory: MemoryStore;
+}
+
+export class Orchestrator {
+  private readonly db: Db;
+  private readonly openrouter: OpenRouterClient;
+  private readonly router: ModelRouter;
+  private readonly registry: ToolRegistry;
+  private readonly config: OrchestratorConfig;
+  private readonly ports: PortFactories;
+  private readonly emitGlobal: OrchestratorDeps['emitGlobal'];
+  private readonly emitters = new Map<string, EmitFn>();
+
+  constructor(deps: OrchestratorDeps) {
+    this.db = deps.db;
+    this.openrouter = deps.openrouter;
+    this.router = deps.router;
+    this.registry = deps.registry;
+    this.config = deps.config;
+    this.ports = deps.ports;
+    this.emitGlobal = deps.emitGlobal;
+  }
+
+  /** Per-run emitter: persists via the backend port, then broadcasts globally. */
+  private emitFor(runId: string): EmitFn {
+    let emitter = this.emitters.get(runId);
+    if (!emitter) {
+      const perRun = this.ports.makeEmit(runId);
+      const emitGlobal = this.emitGlobal;
+      emitter = async (type, payload) => {
+        await perRun(type, payload);
+        await emitGlobal(runId, type, payload);
+      };
+      this.emitters.set(runId, emitter);
+    }
+    return emitter;
+  }
+
+  private async loadRun(runId: string): Promise<AgentRunRow> {
+    const [run] = await this.db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId));
+    if (!run) throw new RunNotFoundError(runId);
+    return run;
+  }
+
+  private async transitionTo(
+    run: AgentRunRow,
+    to: RunState,
+    emit: EmitFn,
+  ): Promise<AgentRunRow> {
+    assertTransition(run.status as RunState, to);
+    const now = new Date();
+    const patch: Partial<AgentRunRow> = { status: to, updatedAt: now };
+    if (to === 'running' && !run.startedAt) patch.startedAt = now;
+    if (to === 'completed' || to === 'failed' || to === 'cancelled') {
+      patch.finishedAt = now;
+    }
+    await this.db.update(agentRuns).set(patch).where(eq(agentRuns.id, run.id));
+    await emit('run.state', { from: run.status, to });
+    return { ...run, ...patch };
+  }
+
+  // -----------------------------------------------------------------------
+  // startRun — idempotent run creation (HTTP entry point)
+  // -----------------------------------------------------------------------
+  async startRun(
+    p: StartRunParams,
+  ): Promise<{ id: string; state: RunState; deduped: boolean }> {
+    const [project] = await this.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, p.projectId));
+    if (!project || project.workspaceId !== p.workspaceId) {
+      throw new OrchestratorError('Project not found in this workspace');
+    }
+    const language = p.language ?? 'en';
+
+    if (p.idempotencyKey) {
+      const candidates = await this.db
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.idempotencyKey, p.idempotencyKey));
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const projectRows = await this.db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.workspaceId, p.workspaceId));
+      const workspaceProjectIds = new Set(projectRows.map((r) => r.id));
+      const existing = candidates.find(
+        (r) =>
+          workspaceProjectIds.has(r.projectId) &&
+          r.createdAt.getTime() >= cutoff,
+      );
+      if (existing) {
+        return { id: existing.id, state: existing.status as RunState, deduped: true };
+      }
+    }
+
+    const [row] = await this.db
+      .insert(agentRuns)
+      .values({
+        projectId: p.projectId,
+        userId: p.userId,
+        conversationId: p.conversationId ?? null,
+        input: p.input,
+        status: 'pending',
+        // Run-scoped metadata co-located in the plan jsonb until planning
+        // replaces it with the real plan (no migration needed).
+        plan: { language },
+        maxSteps: p.maxSteps ?? this.config.maxSteps,
+        budgetUsd: p.budgetUsd != null ? String(p.budgetUsd) : null,
+        idempotencyKey: p.idempotencyKey ?? null,
+      })
+      .returning({ id: agentRuns.id });
+    return { id: row.id, state: 'pending', deduped: false };
+  }
+
+  // -----------------------------------------------------------------------
+  // executeRun — worker entry point
+  // -----------------------------------------------------------------------
+  async executeRun(runId: string): Promise<void> {
+    let run = await this.loadRun(runId);
+    const status = run.status as RunState;
+    if (
+      status === 'cancelled' ||
+      status === 'completed' ||
+      status === 'failed' ||
+      status === 'waiting_approval'
+    ) {
+      return; // terminal or parked: nothing to do
+    }
+    const emit = this.emitFor(runId);
+
+    const [project] = await this.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, run.projectId));
+    if (!project) {
+      await this.failRun(run, emit, 'Project for this run no longer exists', 'en');
+      return;
+    }
+    const workspaceId = project.workspaceId;
+    const language: 'en' | 'es' =
+      (run.plan as { language?: unknown } | null)?.language === 'es' ? 'es' : 'en';
+
+    if (status === 'pending') {
+      run = await this.transitionTo(run, 'planning', emit);
+      await emit('run.started', { runId, input: run.input });
+    }
+
+    if ((run.status as RunState) === 'planning') {
+      run = await this.runPlanning(run, { workspaceId, language, emit });
+      if ((run.status as RunState) !== 'running') return; // parked or failed
+    }
+
+    await this.runExecution(run, { workspaceId, language, emit });
+  }
+
+  // -----------------------------------------------------------------------
+  // Planning
+  // -----------------------------------------------------------------------
+  private async runPlanning(
+    run: AgentRunRow,
+    ctx: { workspaceId: string; language: 'en' | 'es'; emit: EmitFn },
+  ): Promise<AgentRunRow> {
+    const { language, emit } = ctx;
+    const memory = this.ports.makeMemory();
+
+    let projectMemory: Record<string, unknown> = {};
+    let brandKitSummary = '';
+    try {
+      projectMemory = await memory.getProjectMemory(run.projectId);
+      const [kit] = await this.db
+        .select()
+        .from(brandKits)
+        .where(eq(brandKits.projectId, run.projectId));
+      if (kit) {
+        brandKitSummary =
+          `Brand: ${kit.brandName}. Tagline: ${kit.tagline}. Tone: ${kit.tone}. Audience: ${kit.audience}.`.slice(0, 500);
+      }
+    } catch {
+      // Planning proceeds without memory rather than failing the run.
+    }
+
+    let plan: AgentPlan;
+    try {
+      plan = await withTimeout(
+        planRun(this.openrouter, this.router, this.registry, {
+          goal: run.input,
+          language,
+          brandKitSummary,
+          projectMemory,
+          maxSteps: run.maxSteps,
+        }),
+        this.config.runTimeoutMs,
+        `Planning timed out after ${this.config.runTimeoutMs}ms`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await this.failRun(run, emit, message, language);
+      return { ...run, status: 'failed' as RunState };
+    }
+
+    const planJson = { ...plan, language };
+    await this.db
+      .update(agentRuns)
+      .set({ plan: planJson, totalSteps: plan.steps.length, updatedAt: new Date() })
+      .where(eq(agentRuns.id, run.id));
+    run = { ...run, plan: planJson, totalSteps: plan.steps.length };
+
+    const budgetUsd =
+      run.budgetUsd != null ? Number(run.budgetUsd) : this.config.defaultBudgetUsd;
+    const estimated = plan.estimatedCostUsd ?? this.estimatePlanCost(plan);
+    if (estimated > budgetUsd) {
+      const reason =
+        `Estimated cost $${estimated.toFixed(2)} exceeds the approved budget of ` +
+        `$${budgetUsd.toFixed(2)}`;
+      const parked = await this.transitionTo(run, 'waiting_approval', emit);
+      await this.db
+        .update(agentRuns)
+        .set({
+          approval: { reason, requestedBudgetUsd: estimated },
+          updatedAt: new Date(),
+        })
+        .where(eq(agentRuns.id, run.id));
+      await emit('run.waiting_approval', { reason, requestedBudgetUsd: estimated });
+      return { ...parked, status: 'waiting_approval' as RunState };
+    }
+
+    return this.transitionTo(run, 'running', emit);
+  }
+
+  private estimatePlanCost(plan: AgentPlan): number {
+    return plan.steps.reduce(
+      (sum, step) => sum + this.registry.get(step.tool).estimateUsd(step.args),
+      0,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Execution
+  // -----------------------------------------------------------------------
+  private async runExecution(
+    run: AgentRunRow,
+    ctx: { workspaceId: string; language: 'en' | 'es'; emit: EmitFn },
+  ): Promise<void> {
+    const { workspaceId, language, emit } = ctx;
+    const plan = run.plan as unknown;
+    if (!plan || typeof plan !== 'object' || !('steps' in plan)) {
+      await this.failRun(run, emit, 'Run has no plan to execute', language);
+      return;
+    }
+    let parsed: AgentPlan;
+    try {
+      parsed = AgentPlanSchema.parse(plan);
+    } catch (err) {
+      await this.failRun(
+        run,
+        emit,
+        `Stored plan is invalid: ${err instanceof Error ? err.message : String(err)}`,
+        language,
+      );
+      return;
+    }
+
+    let levels: PlanStep[][];
+    try {
+      levels = topologicalLevels(parsed.steps);
+    } catch (err) {
+      await this.failRun(
+        run,
+        emit,
+        `Invalid step graph: ${err instanceof Error ? err.message : String(err)}`,
+        language,
+      );
+      return;
+    }
+
+    const base: StepExecutionContext = {
+      db: this.db,
+      userId: run.userId,
+      workspaceId,
+      projectId: run.projectId,
+      runId: run.id,
+      language,
+      openrouter: this.openrouter,
+      router: this.router,
+      budget: this.ports.makeBudget({ runId: run.id, workspaceId }),
+      storage: this.ports.makeStorage({ workspaceId }),
+      conversation: this.ports.makeConversation(),
+      memory: this.ports.makeMemory(),
+    };
+
+    for (const level of levels) {
+      const settled = await Promise.allSettled(
+        level.map((step) =>
+          this.executeStep(step, parsed.steps.indexOf(step), base, emit),
+        ),
+      );
+      for (const s of settled) {
+        if (s.status === 'fulfilled') continue;
+        const err = s.reason;
+        if (err instanceof RunCancelledSignal || err instanceof BudgetParkedSignal) {
+          return; // stopped quietly / already parked
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        await this.failRun(await this.loadRun(run.id), emit, message, language);
+        return;
+      }
+    }
+
+    await this.finishRun(run.id, { language, emit });
+  }
+
+  private async executeStep(
+    step: PlanStep,
+    stepNo: number,
+    base: StepExecutionContext,
+    emit: EmitFn,
+  ): Promise<'completed' | 'skipped'> {
+    const run = await this.loadRun(base.runId);
+    if ((run.status as RunState) === 'cancelled') {
+      throw new RunCancelledSignal();
+    }
+
+    // Find-or-create the step row (same row reused across resume attempts).
+    const existing = await this.db
+      .select()
+      .from(agentSteps)
+      .where(and(eq(agentSteps.runId, base.runId), eq(agentSteps.stepNo, stepNo)));
+    let stepRow = existing[0];
+    if (stepRow && stepRow.status === 'completed') {
+      return 'skipped'; // resume: completed steps are never re-executed
+    }
+    if (!stepRow) {
+      [stepRow] = await this.db
+        .insert(agentSteps)
+        .values({
+          runId: base.runId,
+          stepNo,
+          kind: step.tool,
+          title: step.title,
+          status: 'running',
+          startedAt: new Date(),
+        })
+        .returning();
+    } else {
+      await this.db
+        .update(agentSteps)
+        .set({ status: 'running', startedAt: new Date(), error: null, updatedAt: new Date() })
+        .where(eq(agentSteps.id, stepRow.id));
+      stepRow = { ...stepRow, status: 'running' };
+    }
+    await emit('step.started', { stepId: step.id, title: step.title, tool: step.tool });
+
+    const tool = this.registry.get(step.tool);
+    const argsHash = stableHash(step.args);
+    const ctx: ToolContext = {
+      ...base,
+      stepId: stepRow.id,
+      emit: (type, payload) => emit(type, { ...payload, stepId: step.id }),
+    };
+
+    // Tool-call idempotency: a completed call for (stepId, tool, argsHash)
+    // is reused instead of re-executed.
+    const priorCalls = await this.db
+      .select()
+      .from(agentToolCalls)
+      .where(
+        and(
+          eq(agentToolCalls.stepId, stepRow.id),
+          eq(agentToolCalls.tool, step.tool),
+          eq(agentToolCalls.argsHash, argsHash),
+        ),
+      );
+    const completedPrior = priorCalls.find((c) => c.status === 'completed');
+
+    let result: ToolResult;
+    if (completedPrior?.result) {
+      result = completedPrior.result as unknown as ToolResult;
+      await emit('tool.completed', { stepId: step.id, tool: step.tool, cached: true });
+    } else {
+      result = await this.runToolCall(tool, ctx, step, stepRow.id, argsHash, priorCalls[0]?.id, emit);
+    }
+
+    // Tool-level budget refusal → park the run for approval.
+    const resultCode =
+      result.data !== null && typeof result.data === 'object'
+        ? (result.data as Record<string, unknown>).code
+        : undefined;
+    if (!result.ok && resultCode === BUDGET_NOT_AFFORDABLE) {
+      const data = result.data as { reason?: string; requestedUsd?: number };
+      await this.markStepFailed(stepRow.id, step, result.summary, emit);
+      await this.parkForBudget(
+        base.runId,
+        emit,
+        data.reason ?? result.summary,
+        data.requestedUsd ?? 0,
+      );
+      throw new BudgetParkedSignal();
+    }
+    if (!result.ok) {
+      const message = result.summary || `Tool ${step.tool} failed`;
+      await this.markStepFailed(stepRow.id, step, message, emit);
+      throw new StepFailedError(message);
+    }
+
+    await this.recordStepUsage(base, step, stepRow.id, result, emit);
+    return 'completed';
+  }
+
+  private async runToolCall(
+    tool: AgentTool,
+    ctx: ToolContext,
+    step: PlanStep,
+    dbStepId: string,
+    argsHash: string,
+    priorCallId: string | undefined,
+    emit: EmitFn,
+  ): Promise<ToolResult> {
+    // Orchestrator-level budget guard for generate-category steps.
+    if (tool.category === 'generate') {
+      const estimate = tool.estimateUsd(step.args);
+      const check = await ctx.budget.checkAffordable(estimate);
+      if (!check.ok) {
+        return {
+          ok: false,
+          summary: `Budget check failed: ${check.reason ?? 'insufficient budget'}`,
+          data: {
+            code: BUDGET_NOT_AFFORDABLE,
+            reason: check.reason ?? 'Insufficient budget',
+            requestedUsd: estimate,
+          },
+        };
+      }
+    }
+
+    await emit('tool.started', { stepId: step.id, tool: step.tool });
+    const startedAt = Date.now();
+
+    let callId = priorCallId;
+    if (!callId) {
+      const [created] = await this.db
+        .insert(agentToolCalls)
+        .values({
+          stepId: dbStepId,
+          tool: step.tool,
+          args: step.args,
+          argsHash,
+          status: 'running',
+        })
+        .returning({ id: agentToolCalls.id });
+      callId = created.id;
+    } else {
+      await this.db
+        .update(agentToolCalls)
+        .set({ status: 'running', error: null, updatedAt: new Date() })
+        .where(eq(agentToolCalls.id, callId));
+    }
+
+    try {
+      const result = await this.executeWithRetry(tool, ctx, step.args);
+      const durationMs = Date.now() - startedAt;
+      const costUsd = result.costUsd ?? result.usage?.costUsd ?? 0;
+      await this.db
+        .update(agentToolCalls)
+        .set({
+          status: 'completed',
+          result: result as unknown as Record<string, unknown>,
+          durationMs,
+          costUsd: String(costUsd),
+          updatedAt: new Date(),
+        })
+        .where(eq(agentToolCalls.id, callId));
+      await emit('tool.completed', { stepId: step.id, tool: step.tool, durationMs });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await this.db
+        .update(agentToolCalls)
+        .set({
+          status: 'failed',
+          error: message,
+          durationMs: Date.now() - startedAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(agentToolCalls.id, callId));
+      throw err instanceof Error ? err : new OrchestratorError(message);
+    }
+  }
+
+  private async executeWithRetry(
+    tool: AgentTool,
+    ctx: ToolContext,
+    args: unknown,
+  ): Promise<ToolResult> {
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await withTimeout(
+          tool.execute(ctx, args),
+          this.config.stepTimeoutMs,
+          `Tool ${tool.name} timed out after ${this.config.stepTimeoutMs}ms`,
+        );
+      } catch (err) {
+        lastError = err;
+        if (attempt < 2) await sleep(500 * 2 ** attempt);
+      }
+    }
+    throw lastError instanceof Error ? lastError : new OrchestratorError(String(lastError));
+  }
+
+  private async markStepFailed(
+    dbStepId: string,
+    step: PlanStep,
+    message: string,
+    emit: EmitFn,
+  ): Promise<void> {
+    await this.db
+      .update(agentSteps)
+      .set({ status: 'failed', error: message, finishedAt: new Date(), updatedAt: new Date() })
+      .where(eq(agentSteps.id, dbStepId));
+    await emit('step.failed', { stepId: step.id, tool: step.tool, error: message });
+  }
+
+  private async recordStepUsage(
+    base: StepExecutionContext,
+    step: PlanStep,
+    dbStepId: string,
+    result: ToolResult,
+    emit: EmitFn,
+  ): Promise<void> {
+    const usage: TokenUsage | undefined = result.usage;
+    const costUsd = result.costUsd ?? usage?.costUsd ?? 0;
+    const model =
+      result.data !== null && typeof result.data === 'object'
+        ? String((result.data as Record<string, unknown>).model ?? 'unknown')
+        : 'unknown';
+
+    if (usage) {
+      await base.budget.recordUsage({
+        model,
+        tool: step.tool,
+        tokensIn: usage.tokensIn,
+        tokensOut: usage.tokensOut,
+        costUsd,
+        durationMs: 0,
+      });
+      await emit('usage', {
+        model,
+        tool: step.tool,
+        tokensIn: usage.tokensIn,
+        tokensOut: usage.tokensOut,
+        costUsd,
+      });
+    }
+
+    const fresh = await this.loadRun(base.runId);
+    const newCost = Number(fresh.costUsd ?? 0) + costUsd;
+    const newCompleted = (fresh.completedSteps ?? 0) + 1;
+    await this.db
+      .update(agentRuns)
+      .set({ costUsd: String(newCost), completedSteps: newCompleted, updatedAt: new Date() })
+      .where(eq(agentRuns.id, base.runId));
+    await this.db
+      .update(agentSteps)
+      .set({
+        status: 'completed',
+        detail: { costUsd },
+        tokensIn: usage?.tokensIn ?? 0,
+        tokensOut: usage?.tokensOut ?? 0,
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(agentSteps.id, dbStepId));
+    await emit('step.completed', { stepId: step.id, tool: step.tool });
+    await emit('run.progress', {
+      completedSteps: newCompleted,
+      totalSteps: fresh.totalSteps,
+      costUsd: newCost,
+    });
+  }
+
+  private async parkForBudget(
+    runId: string,
+    emit: EmitFn,
+    reason: string,
+    requestedUsd: number,
+  ): Promise<void> {
+    const run = await this.loadRun(runId);
+    if ((run.status as RunState) === 'waiting_approval') return;
+    await this.transitionTo(run, 'waiting_approval', emit);
+    await this.db
+      .update(agentRuns)
+      .set({
+        approval: { reason, requestedBudgetUsd: requestedUsd },
+        updatedAt: new Date(),
+      })
+      .where(eq(agentRuns.id, runId));
+    await emit('run.waiting_approval', { reason, requestedBudgetUsd: requestedUsd });
+  }
+
+  // -----------------------------------------------------------------------
+  // Terminal states
+  // -----------------------------------------------------------------------
+  private async failRun(
+    run: AgentRunRow,
+    emit: EmitFn,
+    error: string,
+    language: 'en' | 'es',
+  ): Promise<void> {
+    const fresh = await this.loadRun(run.id).catch(() => run);
+    await this.db
+      .update(agentRuns)
+      .set({ error, updatedAt: new Date() })
+      .where(eq(agentRuns.id, run.id));
+    await this.transitionTo({ ...fresh, error }, 'failed', emit);
+    await emit('run.finished', { status: 'failed', error });
+    if (fresh.conversationId) {
+      const message =
+        language === 'es'
+          ? `No pude completar la tarea: ${error}`
+          : `I couldn't complete the task: ${error}`;
+      try {
+        await this.ports
+          .makeConversation()
+          .appendAssistantMessage(fresh.conversationId, message, { runId: run.id });
+      } catch {
+        // The honest message is best-effort; the run state is authoritative.
+      }
+    }
+  }
+
+  private async finishRun(
+    runId: string,
+    ctx: { language: 'en' | 'es'; emit: EmitFn },
+  ): Promise<void> {
+    const { language, emit } = ctx;
+    const run = await this.loadRun(runId);
+    const steps = await this.db
+      .select()
+      .from(agentSteps)
+      .where(eq(agentSteps.runId, runId));
+
+    let summary: string;
+    try {
+      const model = await this.router.select('review');
+      const result = await withTimeout(
+        this.openrouter.chat({
+          model,
+          messages: [
+            { role: 'system', content: summarySystemPrompt(language) },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                goal: run.input,
+                steps: steps.map((s) => ({
+                  title: s.title,
+                  tool: s.kind,
+                  status: s.status,
+                })),
+              }),
+            },
+          ],
+          maxTokens: 600,
+          temperature: 0.3,
+          timeoutMs: 60000,
+        }),
+        this.config.runTimeoutMs,
+        'Summary timed out',
+      );
+      summary = result.content;
+    } catch {
+      // Honest fallback: report what actually happened, never invent.
+      const done = steps.filter((s) => s.status === 'completed').length;
+      summary =
+        language === 'es'
+          ? `Tarea completada: ${done}/${steps.length} pasos ejecutados correctamente.`
+          : `Task completed: ${done}/${steps.length} steps executed successfully.`;
+    }
+
+    if (run.conversationId) {
+      try {
+        await this.ports
+          .makeConversation()
+          .appendAssistantMessage(run.conversationId, summary, { runId });
+      } catch {
+        // Best-effort; run state is authoritative.
+      }
+    }
+    try {
+      await this.ports.makeMemory().setProjectMemory(
+        run.projectId,
+        'last_run_summary',
+        { runId, summary: summary.slice(0, 500), at: new Date().toISOString() },
+        'Latest agent run summary',
+      );
+    } catch {
+      // Memory is best-effort.
+    }
+
+    await this.transitionTo(run, 'completed', emit);
+    await emit('run.finished', { status: 'completed', summary: summary.slice(0, 2000) });
+  }
+
+  // -----------------------------------------------------------------------
+  // HTTP control plane: cancel / resume / approve
+  // -----------------------------------------------------------------------
+  async cancelRun(runId: string): Promise<{ id: string; state: RunState }> {
+    const run = await this.loadRun(runId);
+    const status = run.status as RunState;
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      return { id: run.id, state: status }; // terminal: idempotent no-op
+    }
+    const emit = this.emitFor(runId);
+    await this.transitionTo(run, 'cancelled', emit);
+    await emit('run.finished', { status: 'cancelled' });
+    return { id: run.id, state: 'cancelled' };
+  }
+
+  async resumeRun(runId: string): Promise<{ id: string; state: RunState }> {
+    const run = await this.loadRun(runId);
+    const status = run.status as RunState;
+    if (status !== 'failed' && status !== 'cancelled') {
+      throw new OrchestratorError(`Cannot resume a run in state '${status}'`);
+    }
+    if (run.attempts >= this.config.maxAttempts) {
+      throw new ResumeLimitError(this.config.maxAttempts);
+    }
+    const emit = this.emitFor(runId);
+    const attempts = run.attempts + 1;
+    await this.db
+      .update(agentRuns)
+      .set({ attempts, error: null, updatedAt: new Date() })
+      .where(eq(agentRuns.id, runId));
+    await this.transitionTo({ ...run, attempts }, 'pending', emit);
+    return { id: run.id, state: 'pending' };
+  }
+
+  async approveRun(
+    runId: string,
+    approved: boolean,
+    budgetUsd?: number,
+  ): Promise<{ id: string; state: RunState }> {
+    const run = await this.loadRun(runId);
+    if ((run.status as RunState) !== 'waiting_approval') {
+      throw new OrchestratorError(
+        `Cannot approve a run in state '${run.status}'`,
+      );
+    }
+    const emit = this.emitFor(runId);
+    if (!approved) {
+      await this.transitionTo(run, 'cancelled', emit);
+      await emit('run.finished', { status: 'cancelled', reason: 'approval_rejected' });
+      return { id: run.id, state: 'cancelled' };
+    }
+    await this.db
+      .update(agentRuns)
+      .set({
+        budgetUsd: budgetUsd != null ? String(budgetUsd) : run.budgetUsd,
+        approval: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentRuns.id, runId));
+    await this.transitionTo(run, 'running', emit);
+    return { id: run.id, state: 'running' };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Summary prompt (final honest recap)
+// ---------------------------------------------------------------------------
+function summarySystemPrompt(language: 'en' | 'es'): string {
+  return language === 'es'
+    ? 'Eres el asistente de BrandForge AI. Resume de forma honesta y breve qué se ha hecho en esta tarea a partir de la lista de pasos ejecutados. No inventes resultados: menciona solo lo que los pasos confirman. Termina con los artefactos creados, si los hay.'
+    : 'You are the BrandForge AI assistant. Honestly and briefly summarize what was accomplished in this task from the executed step list. Do not invent results: mention only what the steps confirm. End with the artifacts created, if any.';
+}
+
+// Re-exported for unit tests (PlannerError is thrown by runPlanning).
+export { PlannerError };

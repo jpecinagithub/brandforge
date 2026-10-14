@@ -14,6 +14,7 @@ import { PaginationQuerySchema, SetAdminInputSchema } from '@brandforge/shared';
 import { getDb } from '../db.js';
 import { Errors, sendError, zodDetails } from '../errors.js';
 import { audit, requestMeta, toUserPublic } from '../authz.js';
+import { modelUsageSummary, toAgentRunDto } from './agent.js';
 
 type Authed = FastifyRequest & { user: NonNullable<FastifyRequest['user']> };
 
@@ -128,6 +129,55 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         userAgent: l.userAgent,
         meta: l.meta,
         createdAt: l.createdAt.toISOString(),
+      })),
+    };
+  });
+
+  // ---- Phase 3: agent observability (never exposes provider keys)
+
+  app.get(`${prefix}/agent/runs`, guard, async (request, reply) => {
+    const q = request.query as { page?: string; limit?: string; state?: string };
+    const pg = PaginationQuerySchema.safeParse({ page: q.page, limit: q.limit });
+    if (!pg.success) return Errors.validation(reply, 'Invalid input', zodDetails(pg.error));
+    const where = q.state ? eq(agentRuns.status, q.state) : undefined;
+    const [total] = await db.select({ n: count() }).from(agentRuns).where(where);
+    const rows = await db
+      .select()
+      .from(agentRuns)
+      .where(where)
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(pg.data.limit)
+      .offset((pg.data.page - 1) * pg.data.limit);
+    return {
+      runs: rows.map(toAgentRunDto),
+      total: total.n,
+      page: pg.data.page,
+      limit: pg.data.limit,
+    };
+  });
+
+  app.get(`${prefix}/agent/usage`, guard, async (request) => {
+    const q = request.query as { days?: string };
+    const days = Math.min(Math.max(Number.parseInt(q.days ?? '30', 10) || 30, 1), 365);
+    return { days, usage: await modelUsageSummary(db, days) };
+  });
+
+  app.get(`${prefix}/agent/errors`, guard, async () => {
+    const rows = await db
+      .select()
+      .from(agentRuns)
+      .where(eq(agentRuns.status, 'failed'))
+      .orderBy(desc(agentRuns.createdAt))
+      .limit(20);
+    return {
+      errors: rows.map((r) => ({
+        id: r.id,
+        projectId: r.projectId,
+        userId: r.userId,
+        error: r.error,
+        attempts: r.attempts,
+        createdAt: r.createdAt.toISOString(),
+        finishedAt: r.finishedAt ? r.finishedAt.toISOString() : null,
       })),
     };
   });

@@ -4,9 +4,10 @@
  * Conventions:
  * - Every table: `id uuid PK default gen_random_uuid()`, `created_at timestamptz default now()`.
  * - Mutable tables additionally carry `updated_at timestamptz` (maintained by the app on writes).
- * - Phase 3 tables (agent_runs, agent_steps, agent_tool_calls, model_usage,
- *   usage_quotas) are minimal STUBS: they exist so migrations/API shapes are
- *   forward-compatible, but nothing writes AI runs in Phases 1-2.
+ * - Phase 3 tables: agent_runs (+ agent_steps, agent_tool_calls, agent_events),
+ *   model_usage, usage_quotas, credit_ledger, agent_memories — see ADR-0006.
+ * - status columns are TEXT validated in app code against @brandforge/shared
+ *   RUN_STATES (avoids enum churn in migrations).
  */
 import {
   boolean,
@@ -289,53 +290,132 @@ export const settings = pgTable('settings', {
 });
 
 // ---------------------------------------------------------------------------
-// PHASE 3 STUBS — minimal tables so migrations/API shapes are forward
-// compatible. Nothing in Phases 1-2 writes or executes agent runs.
+// PHASE 3 — agent engine tables (orchestrator runs, queue, events, ledger,
+// memory). See docs/adr/0006-phase3-queue-and-orchestrator.md.
+// Conventions: status columns are text validated in app code against
+// @brandforge/shared RUN_STATES (keeps migrations simple, no enum churn).
 // ---------------------------------------------------------------------------
-export const agentRuns = pgTable('agent_runs', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  status: text('status').notNull().default('pending'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-});
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id').references(() => conversations.id, {
+      onDelete: 'set null',
+    }),
+    input: text('input').notNull(),
+    status: text('status').notNull().default('pending'),
+    plan: jsonb('plan').notNull().default('{}'),
+    completedSteps: integer('completed_steps').notNull().default(0),
+    totalSteps: integer('total_steps').notNull().default(0),
+    costUsd: numeric('cost_usd').notNull().default('0'),
+    budgetUsd: numeric('budget_usd'),
+    maxSteps: integer('max_steps').notNull().default(25),
+    attempts: integer('attempts').notNull().default(0),
+    idempotencyKey: text('idempotency_key'),
+    error: text('error'),
+    approval: jsonb('approval'),
+    claimedBy: text('claimed_by'),
+    heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('agent_runs_status_created_idx').on(t.status, t.createdAt),
+    index('agent_runs_project_idx').on(t.projectId),
+    uniqueIndex('agent_runs_idempotency_key_uidx').on(t.idempotencyKey),
+  ],
+);
 
-export const agentSteps = pgTable('agent_steps', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  runId: uuid('run_id')
-    .notNull()
-    .references(() => agentRuns.id, { onDelete: 'cascade' }),
-  stepNo: integer('step_no').notNull(),
-  kind: text('kind').notNull(),
-  status: text('status').notNull().default('pending'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-});
+export const agentSteps = pgTable(
+  'agent_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    stepNo: integer('step_no').notNull(),
+    kind: text('kind').notNull(),
+    title: text('title').notNull().default(''),
+    status: text('status').notNull().default('pending'),
+    detail: jsonb('detail').notNull().default('{}'),
+    error: text('error'),
+    tokensIn: integer('tokens_in').notNull().default(0),
+    tokensOut: integer('tokens_out').notNull().default(0),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [index('agent_steps_run_idx').on(t.runId)],
+);
 
-export const agentToolCalls = pgTable('agent_tool_calls', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  stepId: uuid('step_id')
-    .notNull()
-    .references(() => agentSteps.id, { onDelete: 'cascade' }),
-  tool: text('tool').notNull(),
-  args: jsonb('args').notNull().default('{}'),
-  result: jsonb('result'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-});
+export const agentToolCalls = pgTable(
+  'agent_tool_calls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    stepId: uuid('step_id')
+      .notNull()
+      .references(() => agentSteps.id, { onDelete: 'cascade' }),
+    tool: text('tool').notNull(),
+    args: jsonb('args').notNull().default('{}'),
+    argsHash: text('args_hash'),
+    status: text('status').notNull().default('pending'),
+    result: jsonb('result'),
+    error: text('error'),
+    durationMs: integer('duration_ms'),
+    costUsd: numeric('cost_usd'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('agent_tool_calls_step_idx').on(t.stepId),
+    uniqueIndex('agent_tool_calls_idem_uidx').on(t.stepId, t.tool, t.argsHash),
+  ],
+);
 
-export const modelUsage = pgTable('model_usage', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  runId: uuid('run_id').references(() => agentRuns.id, { onDelete: 'set null' }),
-  model: text('model').notNull(),
-  tokensIn: integer('tokens_in').notNull().default(0),
-  tokensOut: integer('tokens_out').notNull().default(0),
-  costUsd: numeric('cost_usd'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-});
+/** Append-only event log per run; the SSE endpoint tails this table. */
+export const agentEvents = pgTable(
+  'agent_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    type: text('type').notNull(),
+    payload: jsonb('payload').notNull().default('{}'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('agent_events_run_seq_uidx').on(t.runId, t.seq),
+    index('agent_events_run_seq_idx').on(t.runId, t.seq),
+  ],
+);
+
+export const modelUsage = pgTable(
+  'model_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id').references(() => agentRuns.id, { onDelete: 'set null' }),
+    model: text('model').notNull(),
+    tool: text('tool'),
+    tokensIn: integer('tokens_in').notNull().default(0),
+    tokensOut: integer('tokens_out').notNull().default(0),
+    costUsd: numeric('cost_usd'),
+    durationMs: integer('duration_ms'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [index('model_usage_run_idx').on(t.runId), index('model_usage_model_created_idx').on(t.model, t.createdAt)],
+);
 
 export const usageQuotas = pgTable('usage_quotas', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -345,9 +425,61 @@ export const usageQuotas = pgTable('usage_quotas', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   plan: text('plan').notNull().default('free'),
   limits: jsonb('limits').notNull().default('{}'),
+  creditsBalance: numeric('credits_balance').notNull().default('0'),
+  aiGenerationsUsed: integer('ai_generations_used').notNull().default(0),
+  aiGenerationsLimit: integer('ai_generations_limit').notNull().default(0),
+  periodMonth: text('period_month'),
+  aiEnabled: boolean('ai_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
 });
+
+/**
+ * Commercial credit ledger (spec §17): grant = monthly plan allowance,
+ * reserve = pre-generation hold, settle = actual charge, refund = release
+ * of a hold when the operation fails. Raw model tokens live in model_usage
+ * and are NEVER confused with credits.
+ */
+export const creditLedger = pgTable(
+  'credit_ledger',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    delta: numeric('delta').notNull(),
+    kind: text('kind').notNull(),
+    refType: text('ref_type').notNull(),
+    refId: uuid('ref_id'),
+    balanceAfter: numeric('balance_after').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('credit_ledger_workspace_created_idx').on(t.workspaceId, t.createdAt)],
+);
+
+/**
+ * Agent memory (spec §11): project scope (brand kit, decisions, resources)
+ * and user scope (authorised reusable preferences). Session memory lives on
+ * the agent_runs row itself (input/plan). Summaries, never full histories,
+ * are sent to models. pgvector is a documented future option, not in v1.
+ */
+export const agentMemories = pgTable(
+  'agent_memories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    scope: text('scope').notNull(),
+    ownerId: uuid('owner_id').notNull(),
+    key: text('key').notNull(),
+    value: jsonb('value').notNull().default('{}'),
+    summary: text('summary'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('agent_memories_scope_owner_key_uidx').on(t.scope, t.ownerId, t.key),
+    index('agent_memories_scope_owner_idx').on(t.scope, t.ownerId),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Type helpers
@@ -365,3 +497,7 @@ export type Message = typeof messages.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type AgentRun = typeof agentRuns.$inferSelect;
+export type AgentEventRow = typeof agentEvents.$inferSelect;
+export type AgentStep = typeof agentSteps.$inferSelect;
+export type CreditLedgerEntry = typeof creditLedger.$inferSelect;
+export type AgentMemory = typeof agentMemories.$inferSelect;

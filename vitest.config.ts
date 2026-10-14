@@ -22,7 +22,11 @@ export default defineConfig({
       defineProject({
         test: {
           name: 'unit',
-          include: ['apps/api/src/**/*.test.ts', 'packages/integrations/src/**/*.test.ts'],
+          include: [
+            'apps/api/src/**/*.test.ts',
+            'packages/integrations/src/**/*.test.ts',
+            'packages/agent-core/src/**/*.test.ts',
+          ],
           exclude: ['**/*.integration.test.ts', '**/node_modules/**'],
           testTimeout: 20000,
         },

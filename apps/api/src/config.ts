@@ -1,5 +1,6 @@
 /** Environment configuration. All secrets come from env — never hardcoded. */
 import 'dotenv/config';
+import { readAgentConfig, readQuotaPlanDefaults } from '@brandforge/agent-server';
 
 function required(name: string): string {
   const v = process.env[name];
@@ -37,4 +38,18 @@ export const config = {
     pass: process.env.SMTP_PASS ?? '',
   },
   isProduction: (process.env.NODE_ENV ?? 'development') === 'production',
+  // Phase 3 agent engine tunables (all limits env-config per ADR-0006).
+  agent: readAgentConfig(),
+  quotaPlans: readQuotaPlanDefaults(),
+  // OpenRouter is server-side only. The integrations package owns the typed
+  // reader (readOpenRouterEnv); this mirror exists so config stays the single
+  // place routes read env from. Never expose apiKey to the browser.
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY ?? '',
+    baseUrl: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
+    textModel: process.env.OPENROUTER_TEXT_MODEL || undefined,
+    visionModel: process.env.OPENROUTER_VISION_MODEL || undefined,
+    imageModel: process.env.OPENROUTER_IMAGE_MODEL || undefined,
+    reviewModel: process.env.OPENROUTER_REVIEW_MODEL || undefined,
+  },
 };

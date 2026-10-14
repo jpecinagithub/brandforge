@@ -1,0 +1,46 @@
+/**
+ * Shared presentation bits for Phase-3 agent runs (badge tones + i18n keys).
+ * Type-only dependency on @brandforge/shared — no zod in the web bundle.
+ */
+import type { BadgeTone } from '@brandforge/ui';
+import type { RunState } from '@brandforge/shared';
+
+/** The 7 run states of the agent state machine (packages/shared/src/agent.ts). */
+export const RUN_STATES: readonly RunState[] = [
+  'pending',
+  'planning',
+  'running',
+  'waiting_approval',
+  'completed',
+  'failed',
+  'cancelled',
+];
+
+export const runStateTone: Record<RunState, BadgeTone> = {
+  pending: 'slate',
+  planning: 'sky',
+  running: 'violet',
+  waiting_approval: 'amber',
+  completed: 'emerald',
+  failed: 'red',
+  cancelled: 'slate',
+};
+
+export const runStateLabelKey: Record<RunState, string> = {
+  pending: 'agent.pending',
+  planning: 'agent.planning',
+  running: 'agent.running',
+  waiting_approval: 'agent.waitingApproval',
+  completed: 'agent.completed',
+  failed: 'agent.failed',
+  cancelled: 'agent.cancelled',
+};
+
+/** States where the run is still alive on the server (cancel button shown). */
+export function isRunActive(state: RunState): boolean {
+  return state === 'pending' || state === 'planning' || state === 'running' || state === 'waiting_approval';
+}
+
+export function isKnownRunState(state: string): state is RunState {
+  return (RUN_STATES as readonly string[]).includes(state);
+}

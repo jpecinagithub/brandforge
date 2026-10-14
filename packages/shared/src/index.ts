@@ -310,3 +310,8 @@ export type SetAdminInput = z.infer<typeof SetAdminInputSchema>;
 // Success envelopes (flat, per API contract)
 // ---------------------------------------------------------------------------
 export type Envelope<T extends object> = T;
+
+// ---------------------------------------------------------------------------
+// Phase 3 agent contracts (run states, tools, plans, events, DTOs)
+// ---------------------------------------------------------------------------
+export * from "./agent.js";

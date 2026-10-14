@@ -1,6 +1,6 @@
 # BrandForge AI — Architecture
 
-> Phases 1–2 (foundation + full auth). Last updated 2026-10-14.
+> Phases 1–3 (foundation + full auth + agentic engine). Last updated 2026-10-14.
 > Decisions live in `docs/adr/`; deployment in `docs/DEPLOY_ORACLE.md` / `docs/DEPLOY_VERCEL.md`.
 
 ## 1. System context (C4 L1)
@@ -50,7 +50,7 @@ Key invariants:
 |---|---|---|---|---|
 | Web SPA | React 19 + TS + Vite, PWA | `apps/web/` | Vercel | Bilingual EN/ES (EN default); `@vercel/analytics` in code; footer “Developed by Jon Peciña Iturbe” |
 | API | Fastify + Node 24 | `apps/api/` | Oracle Docker, 127.0.0.1:3013 | Session-cookie auth, RBAC, rate limits, maildir/SMTP |
-| Worker | Node 24 job runner | `apps/worker/` | Oracle Docker | Stubbed in Phase 2; runs the AI generation pipeline in Phase 3 |
+| Worker | Node 24 job runner | `apps/worker/` | Oracle Docker | Claims `agent_runs` queue, executes the orchestrator (Phase 3) |
 | Database | Postgres 15 + Drizzle ORM | `packages/database/` | Oracle Docker volume | SQL-transparent migrations; seed script + demo assets |
 | Reverse proxy | nginx | Oracle `/etc/nginx/sites-enabled/mi-gps` | Oracle host | `/brandforge/api/` → API; see `infrastructure/nginx/` reference |
 
@@ -170,7 +170,7 @@ hard-delete for expired demos, all user content scoped by `workspace_id`.
 
 | Phase | Capability | Stub location | Notes |
 |---|---|---|---|
-| 3 | AI generation (OpenRouter) | `packages/agent-core/`, `apps/worker/`, `packages/integrations/` | Browser never calls OpenRouter; queue via worker; prompt-injection guardrails (see `docs/SECURITY.md` §6) |
+| 3 | AI generation (OpenRouter) | `packages/agent-core/`, `apps/worker/`, `packages/integrations/` | ✅ Implemented: orchestrator + 13 tools + model router + SSE; browser never calls OpenRouter; prompt-injection guardrails (see `docs/SECURITY.md` §6) |
 | 3 | File scan on upload | `apps/api/` upload handler | hook point documented, ClamAV optional |
 | 4 | Landing-page builder | `apps/web/` routes + `packages/database/seed-data/demo-cafe.json` → `landingExample` | `demo-cafe.json` already carries the static example structure |
 | 5 | Billing / teams / SSO | `apps/api/` billing module (not started) | — |

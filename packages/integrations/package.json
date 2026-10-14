@@ -1,1 +1,21 @@
-{"description":"BrandForge external integrations — Phase 3 stub (OpenRouter client)","exports":{".":{"import":"./dist/index.js","types":"./dist/index.d.ts"}},"files":["dist"],"main":"./dist/index.js","name":"@brandforge/integrations","scripts":{"build":"tsc -p tsconfig.json","typecheck":"tsc --noEmit -p tsconfig.json"},"type":"module","types":"./dist/index.d.ts","version":"0.1.0"}
+{
+  "description": "BrandForge external integrations — OpenRouter client (server-side only). Chat, image generation, /models capability lookup and ModelRouter for Phase 3.",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "name": "@brandforge/integrations",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "version": "0.1.0"
+}

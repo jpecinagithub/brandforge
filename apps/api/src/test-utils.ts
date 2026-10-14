@@ -15,8 +15,11 @@ export { clearMaildir, closeDb, emlCount, extractTokenFromEml, newestEml };
 const TABLES = [
   'agent_tool_calls',
   'agent_steps',
+  'agent_events',
   'agent_runs',
+  'agent_memories',
   'model_usage',
+  'credit_ledger',
   'usage_quotas',
   'settings',
   'audit_logs',

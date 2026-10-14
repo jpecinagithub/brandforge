@@ -81,6 +81,19 @@ npm run test:e2e
 | `tests/e2e/demo.spec.ts` | "Try Demo — No registration required" → `/app`, demo banner, Café Aroma project, open workspace, chat shows the AI_NOT_CONFIGURED notice; sending a message gets the honest stub reply |
 | `tests/e2e/auth.spec.ts` | register → "Check your email" → verify via maildir token → login → New Campaign modal creates a project → logout → login again |
 | `tests/e2e/projects.spec.ts` | (demo session cookie) create project → favorite → create campaign → edit brand kit name → upload avatar PNG → delete project |
+| `tests/e2e/agent-chat.spec.ts` | Phase-3 agentic chat UI: POST /messages returning a canned `run` (routed), scriptable `EventSource` mock emitting contract-shaped SSE frames — progress card streams steps/tools/usage, approval gate (approve with raised budget asserts the request body), cancel, stream-error → manual retry (no infinite reconnect), runs history list + step-detail modal (mobile viewport). Real backend only for auth/project/conversation. See the spec header for the full strategy rationale. |
+
+### Agent-chat E2E strategy (approach b)
+
+The Phase-3 agent endpoints were built in parallel with the frontend, so
+`agent-chat.spec.ts` does not assert real backend behaviour. It routes
+`POST /api/v1/conversations/{id}/messages` to a canned `{message, run}` shaped
+like the `AgentRun` contract, and replaces `window.EventSource` (via
+`page.addInitScript`) with a scriptable mock emitting the contract's SSE frames
+(`{id, runId, seq, type, payload, createdAt}`). Everything else — demo auth
+cookie, project creation, the GET conversation reload after `run.finished` —
+goes through the real test API. The honest `AI_NOT_CONFIGURED` stub path stays
+covered against the real backend in `demo.spec.ts`.
 
 ### If `/tmp` was wiped (VM restart)
 

@@ -8,15 +8,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 COPY package.json package-lock.json* ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/database/package.json packages/database/
+COPY packages/integrations/package.json packages/integrations/
+COPY packages/agent-core/package.json packages/agent-core/
+COPY packages/agent-server/package.json packages/agent-server/
 COPY apps/api/package.json apps/api/
 RUN npm ci --workspaces --include-workspace-root
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY packages/database/src packages/database/src
 COPY packages/database/drizzle.config.ts packages/database/
+COPY packages/integrations/src packages/integrations/src
+COPY packages/agent-core/src packages/agent-core/src
+COPY packages/agent-server/src packages/agent-server/src
 COPY apps/api apps/api
 RUN npm run build --workspace=@brandforge/shared \
   && npm run build --workspace=@brandforge/database \
+  && npm run build --workspace=@brandforge/integrations \
+  && npm run build --workspace=@brandforge/agent-core \
+  && npm run build --workspace=@brandforge/agent-server \
   && npm run build --workspace=@brandforge/api \
   && npm prune --omit=dev --workspace=@brandforge/api
 
@@ -31,6 +40,12 @@ COPY --from=build --chown=app:app /app/packages/shared/dist ./packages/shared/di
 COPY --from=build --chown=app:app /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build --chown=app:app /app/packages/database/dist ./packages/database/dist
 COPY --from=build --chown=app:app /app/packages/database/package.json ./packages/database/package.json
+COPY --from=build --chown=app:app /app/packages/integrations/dist ./packages/integrations/dist
+COPY --from=build --chown=app:app /app/packages/integrations/package.json ./packages/integrations/package.json
+COPY --from=build --chown=app:app /app/packages/agent-core/dist ./packages/agent-core/dist
+COPY --from=build --chown=app:app /app/packages/agent-core/package.json ./packages/agent-core/package.json
+COPY --from=build --chown=app:app /app/packages/agent-server/dist ./packages/agent-server/dist
+COPY --from=build --chown=app:app /app/packages/agent-server/package.json ./packages/agent-server/package.json
 COPY --from=build --chown=app:app /app/apps/api/dist ./apps/api/dist
 COPY --from=build --chown=app:app /app/apps/api/package.json ./apps/api/package.json
 USER app

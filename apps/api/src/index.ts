@@ -24,6 +24,7 @@ import { brandKitRoutes } from './routes/brandkits.js';
 import { conversationRoutes } from './routes/conversations.js';
 import { assetRoutes } from './routes/assets.js';
 import { adminRoutes } from './routes/admin.js';
+import { agentRoutes } from './routes/agent.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -61,7 +62,7 @@ export async function buildApp() {
   if (!config.isProduction) {
     await app.register(swagger, {
       openapi: {
-        info: { title: 'BrandForge API', version: '0.1.0', description: 'Phases 1-2: foundation + auth' },
+        info: { title: 'BrandForge API', version: '0.1.0', description: 'Phase 3: agentic engine' },
       },
     });
     await app.register(swaggerUi, { routePrefix: '/docs' });
@@ -106,6 +107,7 @@ export async function buildApp() {
   await app.register(conversationRoutes);
   await app.register(assetRoutes);
   await app.register(adminRoutes);
+  await app.register(agentRoutes);
 
   // Revoke sessions that expired while the server was down (best effort)
   app.addHook('onReady', async () => {

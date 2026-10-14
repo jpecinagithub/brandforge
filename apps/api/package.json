@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@brandforge/agent-server": "0.1.0",
     "@brandforge/database": "0.1.0",
     "@brandforge/shared": "0.1.0",
     "@fastify/cookie": "^11.0.2",

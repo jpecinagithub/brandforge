@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, CardContent, EmptyState, Input, Modal, Spinner } from '@brandforge/ui';
 import {
   ArrowLeft, Check, Download, FolderKanban, ImagePlus, Megaphone,
-  Pencil, Plus, Send, Star, Trash2, Info, Globe,
+  Pencil, Plus, Star, Trash2, Globe,
 } from 'lucide-react';
 import { del, get, patch, post, put, assetUrl, ApiError } from '@/lib/api';
-import type { Asset, BrandKit, Campaign, Conversation, ConversationMessage, Project } from '@/lib/types';
+import type { Asset, BrandKit, Campaign, Project } from '@/lib/types';
 
 type Tab = 'overview' | 'campaigns' | 'brandkit' | 'assets' | 'landing';
 type MobileView = 'sidebar' | 'canvas' | 'chat';
@@ -22,121 +22,7 @@ const tabLabels: Record<Tab, string> = {
   landing: 'workspace.tabLanding',
 };
 
-/* ------------------------------ Chat panel ------------------------------ */
-
-function ChatPanel({ projectId }: { projectId: string }) {
-  const { t } = useTranslation();
-  const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<ConversationMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await get<{ conversation: Conversation; messages: ConversationMessage[] }>(
-        `/api/v1/projects/${projectId}/conversation`,
-      );
-      setConversation(res.conversation);
-      setMessages(res.messages ?? []);
-    } catch {
-      setMessages([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const send = async () => {
-    const content = input.trim();
-    if (!content || !conversation || sending) return;
-    setSending(true);
-    setInput('');
-    try {
-      const res = await post<{ message: ConversationMessage; reply: { content: string; notice?: string } }>(
-        `/api/v1/conversations/${conversation.id}/messages`,
-        { content },
-      );
-      setMessages((m) => [
-        ...m,
-        res.message,
-        {
-          id: `reply-${res.message.id}`,
-          role: 'assistant',
-          content: res.reply.content,
-          createdAt: new Date().toISOString(),
-        },
-      ]);
-    } catch {
-      setInput(content);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('workspace.chatTitle')}</h3>
-        <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
-          <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>{t('workspace.chatNotice')}</span>
-        </div>
-      </div>
-
-      <div className="slim-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-        {loading ? (
-          <div className="flex h-full items-center justify-center text-violet-600"><Spinner /></div>
-        ) : messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">{t('workspace.chatEmpty')}</p>
-        ) : (
-          messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 text-sm ${
-                  m.role === 'user'
-                    ? 'rounded-br-md bg-violet-600 text-white'
-                    : 'rounded-bl-md bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100'
-                }`}
-              >
-                <p className="whitespace-pre-wrap">{m.content}</p>
-                {m.role === 'assistant' && (
-                  <p className="mt-1.5 text-[11px] italic text-slate-400 dark:text-slate-500">{t('workspace.chatReplyNotice')}</p>
-                )}
-              </div>
-            </div>
-          ))
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      <div className="border-t border-slate-200 p-3 dark:border-slate-800">
-        <div className="flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
-            placeholder={t('workspace.chatPlaceholder')}
-            aria-label={t('workspace.chatTitle')}
-            className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-          />
-          <Button size="sm" onClick={send} disabled={!input.trim() || sending} aria-label={t('common.send')} className="px-3">
-            {sending ? <Spinner size="sm" /> : <Send size={16} />}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { ChatPanel } from '@/components/chat/ChatPanel';
 
 /* ------------------------------ Campaigns tab ------------------------------ */
 

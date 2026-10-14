@@ -1,14 +1,15 @@
 {
   "dependencies": {
+    "argon2": "^0.44.0",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.38.4",
-    "postgres": "^3.4.5",
-    "argon2": "^0.44.0"
+    "postgres": "^3.4.5"
   },
   "description": "Drizzle ORM schema, migrations and seed tooling for BrandForge",
   "devDependencies": {
     "@types/node": "^22.10.2",
     "drizzle-kit": "^0.31.4",
+    "pg": "^8.23.1",
     "tsx": "^4.20.0",
     "typescript": "^5.7.2"
   },

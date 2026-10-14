@@ -1,13 +1,16 @@
 # @brandforge/worker
 
-Background job runner — **Phase 5 stub**.
+Background job runner — **Phase 3 agent run executor** (ADR-0006).
 
-`src/index.ts` currently logs a notice and exits 0.
+`src/index.ts` runs the claim loop:
 
-## Plan (Phase 5)
+- On startup it re-queues runs stuck in `planning`/`running` with a stale
+  heartbeat (> 5 min) back to `pending` (`attempts` + 1; after 3 attempts the
+  run is marked `failed`).
+- Every 2 s it claims one `pending` run with
+  `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)`, heartbeats
+  every 15 s, and drives it with `orchestrator.executeRun(runId)`.
+- SIGTERM/SIGINT shut the loop down gracefully.
 
-- Job queue: **pg-boss on Postgres** — no Redis per project spec.
-- First jobs: `cleanup-demos` (expired demo accounts), email retries,
-  Phase-3 agent run execution.
-- The `worker` service in `infrastructure/docker/docker-compose.yml` is
-  commented out until Phase 5.
+The `worker` service in `infrastructure/docker/docker-compose.yml` runs this
+image by default (no profile). Local dev: `npm run dev --workspace=@brandforge/worker`.
