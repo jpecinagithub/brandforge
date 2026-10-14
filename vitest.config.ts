@@ -14,7 +14,9 @@ import { defineConfig, defineProject } from 'vitest/config';
  *  npm run test:unit
  *  npm run test:integration
  */
-const TEST_DATABASE_URL = 'postgres://brandforge:brandforge_dev_pw@localhost:5432/brandforge_test';
+const TEST_DATABASE_URL =
+  process.env.TEST_DATABASE_URL ??
+  'postgres://brandforge:brandforge_dev_pw@localhost:5432/brandforge_test';
 
 export default defineConfig({
   test: {
