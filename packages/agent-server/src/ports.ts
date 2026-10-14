@@ -32,6 +32,9 @@ export type EmitFn = (
 export function makeEmit(db: Db): (runId: string) => EmitFn {
   return (runId: string) => async (type, payload) => {
     return db.transaction(async (tx) => {
+      // Serialize event appends per run: concurrent emits would otherwise
+      // read the same max(seq) and collide on the unique (run_id, seq) index.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${runId}))`);
       const [m] = await tx
         .select({ max: sql<number | null>`max(${agentEvents.seq})` })
         .from(agentEvents)
