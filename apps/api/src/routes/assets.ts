@@ -89,7 +89,17 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     const rel = a.filename.includes('/') ? a.filename : `assets/${a.filename}`;
     try {
       const data = await storage.get(rel);
-      return reply.type(a.mime).header('content-length', data.length).send(data);
+      // The SPA is served from Vercel while private assets live on the Oracle
+      // API origin. Helmet defaults CORP to `same-origin`, which makes the
+      // browser discard an otherwise-authorized <img> response. This only
+      // permits cross-origin embedding; the session and workspace membership
+      // checks above still protect the file itself.
+      return reply
+        .header('Cross-Origin-Resource-Policy', 'cross-origin')
+        .header('Cache-Control', 'private, no-store')
+        .type(a.mime)
+        .header('content-length', data.length)
+        .send(data);
     } catch {
       return Errors.notFound(reply, 'File not found on disk');
     }

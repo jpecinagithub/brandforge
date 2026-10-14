@@ -155,6 +155,19 @@ describe('project workspace flow', () => {
     expect(up.statusCode).toBe(201);
     expect(up.json().asset.mime).toBe('image/png');
 
+    const assetId = (up.json() as { asset: { id: string } }).asset.id;
+    const image = await app.inject(
+      authed(cookie, {
+        method: 'GET',
+        url: `/api/v1/assets/${assetId}`,
+        headers: { origin: 'https://brandforge-tan.vercel.app' },
+      }),
+    );
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toMatch(/^image\/png/);
+    expect(image.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(image.headers['cache-control']).toBe('private, no-store');
+
     const del = await app.inject(authed(cookie, { method: 'DELETE', url: `/api/v1/projects/${projectId}` }));
     expect(del.statusCode).toBe(200);
     const gone = await app.inject(authed(cookie, { method: 'GET', url: `/api/v1/projects/${projectId}` }));
