@@ -25,6 +25,7 @@ import { conversationRoutes } from './routes/conversations.js';
 import { assetRoutes } from './routes/assets.js';
 import { adminRoutes } from './routes/admin.js';
 import { agentRoutes } from './routes/agent.js';
+import { devMailRoutes } from './routes/devmail.js';
 
 export async function buildApp() {
   const app = Fastify({
@@ -108,6 +109,7 @@ export async function buildApp() {
   await app.register(assetRoutes);
   await app.register(adminRoutes);
   await app.register(agentRoutes);
+  await app.register(devMailRoutes);
 
   // Revoke sessions that expired while the server was down (best effort)
   app.addHook('onReady', async () => {
