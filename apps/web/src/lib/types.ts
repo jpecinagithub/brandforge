@@ -25,6 +25,7 @@ export interface Project {
   isFavorite: boolean;
   updatedAt: string;
   campaignCount: number;
+  assetCount: number;
 }
 
 export interface Campaign {
@@ -63,6 +64,20 @@ export interface ConversationMessage {
 
 export interface Conversation {
   id: string;
+}
+
+export interface AgentAvailability {
+  available: boolean;
+  reason?: 'not_configured' | 'quota_exhausted';
+}
+
+export interface LandingPage {
+  id: string;
+  projectId: string;
+  name: string;
+  schema: unknown;
+  createdAt: string;
+  updatedAt?: string | null;
 }
 
 export interface ChatReply {

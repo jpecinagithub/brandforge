@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, CardContent, EmptyState, Input, Modal, Spinner } from '@brandforge/ui';
 import {
   ArrowLeft, Check, Download, FolderKanban, ImagePlus, Megaphone,
-  Pencil, Plus, Star, Trash2, Globe,
+  Pencil, Plus, Star, Trash2,
 } from 'lucide-react';
 import { del, get, patch, post, put, assetUrl, ApiError } from '@/lib/api';
 import type { Asset, BrandKit, Campaign, Project } from '@/lib/types';
@@ -23,6 +23,7 @@ const tabLabels: Record<Tab, string> = {
 };
 
 import { ChatPanel } from '@/components/chat/ChatPanel';
+import { LandingStudio } from '@/components/workspace/LandingStudio';
 
 /* ------------------------------ Campaigns tab ------------------------------ */
 
@@ -95,10 +96,10 @@ function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCount
       ) : (
         <div className="grid gap-3">
           {campaigns.map((c) => (
-            <Card key={c.id}><CardContent className="flex items-center justify-between gap-3">
+            <Card key={c.id}><CardContent className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
               <div className="min-w-0">
-                <p className="truncate font-medium text-slate-900 dark:text-white">{c.name}</p>
-                {c.objective && <p className="truncate text-sm text-slate-500 dark:text-slate-400">{c.objective}</p>}
+                <p className="font-medium text-slate-900 dark:text-white">{c.name}</p>
+                {c.objective && <p className="mt-0.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{c.objective}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Badge tone={c.status === 'active' ? 'emerald' : 'slate'}>{c.status}</Badge>
@@ -170,10 +171,20 @@ function BrandKitTab({ projectId }: { projectId: string }) {
   if (loading) return <div className="flex h-40 items-center justify-center text-violet-600"><Spinner /></div>;
 
   const set = (k: keyof BrandKit, v: string) => setKit((prev) => ({ ...prev, [k]: v }));
+  const hasBrandKit = Boolean(
+    kit.id || kit.brandName || kit.tagline || kit.description || kit.tone || kit.audience
+      || colorsText.trim() || fontsText.trim(),
+  );
+  const colorSwatches = colorsText
+    .split(',')
+    .map((color) => color.trim())
+    .filter((color) => /^#[0-9a-f]{6}$/i.test(color));
 
   return (
     <Card><CardContent className="space-y-4">
-      <p className="text-sm text-slate-500 dark:text-slate-400">{t('workspace.brandKitEmpty')}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        {t(hasBrandKit ? 'workspace.brandKitHint' : 'workspace.brandKitEmpty')}
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label={t('workspace.brandKitBrandName')} value={kit.brandName ?? ''} onChange={(e) => set('brandName', e.target.value)} />
         <Input label={t('workspace.brandKitTagline')} value={kit.tagline ?? ''} onChange={(e) => set('tagline', e.target.value)} />
@@ -184,7 +195,16 @@ function BrandKitTab({ projectId }: { projectId: string }) {
           className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input label={t('workspace.brandKitColors')} value={colorsText} onChange={(e) => setColorsText(e.target.value)} placeholder="#7C3AED, #F59E0B" />
+        <div>
+          <Input label={t('workspace.brandKitColors')} value={colorsText} onChange={(e) => setColorsText(e.target.value)} placeholder="#7C3AED, #F59E0B" />
+          {colorSwatches.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2" aria-hidden="true">
+              {colorSwatches.map((color) => (
+                <span key={color} className="h-7 w-7 rounded-full border border-black/10 shadow-sm" style={{ backgroundColor: color }} />
+              ))}
+            </div>
+          )}
+        </div>
         <Input label={t('workspace.brandKitFonts')} value={fontsText} onChange={(e) => setFontsText(e.target.value)} placeholder="Inter, Georgia" />
         <Input label={t('workspace.brandKitTone')} value={kit.tone ?? ''} onChange={(e) => set('tone', e.target.value)} />
         <Input label={t('workspace.brandKitAudience')} value={kit.audience ?? ''} onChange={(e) => set('audience', e.target.value)} />
@@ -368,7 +388,7 @@ export function ProjectWorkspace() {
   }
 
   const sidebar = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('workspace.projects')}</h3>
         <button onClick={() => setNewProjectOpen(true)} aria-label={t('workspace.newProject')}
@@ -448,7 +468,7 @@ export function ProjectWorkspace() {
       </div>
 
       {/* Tab content */}
-      <div className="slim-scroll min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+      <div className="slim-scroll min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
         {tab === 'overview' && (
           <div className="space-y-4">
             <Card><CardContent className="space-y-4">
@@ -465,7 +485,7 @@ export function ProjectWorkspace() {
                 <p className="text-xs text-slate-500 dark:text-slate-400">{t('workspace.overviewCampaigns')}</p>
               </CardContent></Card>
               <Card><CardContent className="text-center">
-                <p className="text-2xl font-bold text-slate-400 dark:text-slate-500">—</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{project.assetCount}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">{t('workspace.overviewAssets')}</p>
               </CardContent></Card>
             </div>
@@ -479,13 +499,7 @@ export function ProjectWorkspace() {
         {tab === 'campaigns' && <CampaignsTab projectId={project.id} onCountChange={loadProject} />}
         {tab === 'brandkit' && <BrandKitTab projectId={project.id} />}
         {tab === 'assets' && <AssetsTab projectId={project.id} />}
-        {tab === 'landing' && (
-          <Card><EmptyState
-            icon={<Globe size={26} />}
-            title={t('workspace.landingPlaceholderTitle')}
-            description={t('workspace.landingPlaceholderDesc')}
-          /></Card>
-        )}
+        {tab === 'landing' && <LandingStudio projectId={project.id} onOpenChat={() => setMobileView('chat')} />}
       </div>
     </div>
   );
@@ -499,7 +513,7 @@ export function ProjectWorkspace() {
   ];
 
   return (
-    <div className="-m-4 sm:-m-6 lg:-m-8">
+    <div className="min-w-0 overflow-hidden -m-4 sm:-m-6 lg:-m-8">
       {/* Mobile column switcher */}
       <div className="flex gap-1 border-b border-slate-200 bg-white p-2 lg:hidden dark:border-slate-800 dark:bg-slate-950" role="tablist" aria-label="Workspace views">
         {mobileTabs.map((mv) => (
@@ -522,7 +536,7 @@ export function ProjectWorkspace() {
       {/* Desktop 3-column grid */}
       <div className="hidden h-[calc(100vh-4rem-3.5rem)] min-h-[560px] lg:grid lg:grid-cols-[240px_minmax(0,1fr)_340px]">
         <div className="min-h-0 border-r border-slate-200 dark:border-slate-800">{sidebar}</div>
-        <div className="min-h-0">{canvas}</div>
+        <div className="min-h-0 min-w-0">{canvas}</div>
         <div className="min-h-0 border-l border-slate-200 dark:border-slate-800"><Card className="h-full !rounded-none !border-0">{chat}</Card></div>
       </div>
 

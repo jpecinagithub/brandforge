@@ -1,15 +1,14 @@
 /**
- * ChatPanel — project agent chat (Phase 3).
+ * ChatPanel — project agent chat with live, persisted run progress.
  *
  * Send flow per the agent contract:
  *  1. POST /api/v1/conversations/:id/messages {content}
  *     → { message, run: AgentRun|null, reply?: {content, notice?} }
  *  2. If `run` is present → the backend started an agentic run: append the
  *     user message, render a live <AgentRunCard/> (SSE progress), hide the
- *     "not configured" banner.
+ *     availability warning.
  *  3. Else if `reply` is present → append the assistant message. When
- *     `reply.notice === 'AI_NOT_CONFIGURED'` the honest Phase-3 stub notice
- *     stays visible (top banner + reply sub-note), exactly as before.
+ *     `reply.notice` explains whether configuration or quota prevented a run.
  *  4. On run.finished → reload the thread (the backend already persisted the
  *     final assistant message) and refresh the runs history; the card stays
  *     in the thread, marked done.
@@ -17,14 +16,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Spinner } from '@brandforge/ui';
-import { Info, Send } from 'lucide-react';
+import { CheckCircle2, Info, Send } from 'lucide-react';
 import { get, post } from '@/lib/api';
-import type { Conversation, ConversationMessage } from '@/lib/types';
+import type { AgentAvailability, Conversation, ConversationMessage } from '@/lib/types';
 import type { AgentRun } from '@brandforge/shared';
 import { AgentRunCard } from './AgentRunCard';
 import { AgentRunsHistory } from './AgentRunsHistory';
 
 const AI_NOT_CONFIGURED = 'AI_NOT_CONFIGURED';
+const AI_QUOTA_UNAVAILABLE = 'AI_QUOTA_UNAVAILABLE';
+type AgentStatus = 'unknown' | 'available' | 'not_configured' | 'quota_exhausted';
 
 interface ChatMsg extends ConversationMessage {
   notice?: string;
@@ -43,23 +44,24 @@ interface SendMessageResponse {
 }
 
 export function ChatPanel({ projectId }: { projectId: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [aiNotConfigured, setAiNotConfigured] = useState(true);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus>('unknown');
   const [liveRuns, setLiveRuns] = useState<AgentRun[]>([]);
   const [runsRefreshKey, setRunsRefreshKey] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = useCallback(async () => {
-    const res = await get<{ conversation: Conversation; messages: ConversationMessage[] }>(
+    const res = await get<{ conversation: Conversation; messages: ConversationMessage[]; agent: AgentAvailability }>(
       `/api/v1/projects/${projectId}/conversation`,
     );
     setConversation(res.conversation);
     setMessages(res.messages ?? []);
+    setAgentStatus(res.agent.available ? 'available' : (res.agent.reason ?? 'not_configured'));
   }, [projectId]);
 
   useEffect(() => {
@@ -91,14 +93,18 @@ export function ChatPanel({ projectId }: { projectId: string }) {
     setSending(true);
     setInput('');
     try {
-      const res = await post<SendMessageResponse>(`/api/v1/conversations/${conversation.id}/messages`, { content });
+      const res = await post<SendMessageResponse>(`/api/v1/conversations/${conversation.id}/messages`, {
+        content,
+        language: i18n.language.startsWith('es') ? 'es' : 'en',
+      });
       setMessages((m) => [...m, res.message]);
       if (res.run) {
-        setAiNotConfigured(false);
+        setAgentStatus('available');
         setLiveRuns((r) => [...r, res.run as AgentRun]);
       } else if (res.reply) {
         const notice = res.reply.notice;
-        setAiNotConfigured(notice === AI_NOT_CONFIGURED);
+        if (notice === AI_NOT_CONFIGURED) setAgentStatus('not_configured');
+        if (notice === AI_QUOTA_UNAVAILABLE) setAgentStatus('quota_exhausted');
         setMessages((m) => [
           ...m,
           {
@@ -120,11 +126,19 @@ export function ChatPanel({ projectId }: { projectId: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('workspace.chatTitle')}</h3>
-        {aiNotConfigured && (
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('workspace.chatTitle')}</h3>
+          {agentStatus === 'available' && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 size={13} aria-hidden="true" />
+              {t('workspace.agentAvailable')}
+            </span>
+          )}
+        </div>
+        {(agentStatus === 'not_configured' || agentStatus === 'quota_exhausted') && (
           <div className="mt-2 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
             <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-            <span>{t('workspace.chatNotice')}</span>
+            <span>{t(agentStatus === 'quota_exhausted' ? 'workspace.agentQuotaUnavailable' : 'workspace.agentUnavailable')}</span>
           </div>
         )}
       </div>
@@ -147,7 +161,7 @@ export function ChatPanel({ projectId }: { projectId: string }) {
                 }`}
               >
                 <p className="whitespace-pre-wrap">{m.content}</p>
-                {m.role === 'assistant' && m.notice === AI_NOT_CONFIGURED && (
+                {m.role === 'assistant' && (m.notice === AI_NOT_CONFIGURED || m.notice === AI_QUOTA_UNAVAILABLE) && (
                   <p className="mt-1.5 text-[11px] italic text-slate-400 dark:text-slate-500">{t('workspace.chatReplyNotice')}</p>
                 )}
               </div>

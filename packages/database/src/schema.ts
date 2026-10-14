@@ -451,10 +451,17 @@ export const creditLedger = pgTable(
     kind: text('kind').notNull(),
     refType: text('ref_type').notNull(),
     refId: uuid('ref_id'),
+    // Links a settle/refund adjustment to the exact reserve it closes.
+    // PostgreSQL permits multiple NULLs, while the unique index guarantees
+    // that a reservation can never be released more than once.
+    reservationId: uuid('reservation_id'),
     balanceAfter: numeric('balance_after').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('credit_ledger_workspace_created_idx').on(t.workspaceId, t.createdAt)],
+  (t) => [
+    index('credit_ledger_workspace_created_idx').on(t.workspaceId, t.createdAt),
+    uniqueIndex('credit_ledger_reservation_uidx').on(t.reservationId),
+  ],
 );
 
 /**

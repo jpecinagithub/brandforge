@@ -26,7 +26,7 @@ services:
       PORT: 3013
       NODE_ENV: production
     ports:
-      - "3013:3013"
+      - "127.0.0.1:3013:3013"
     depends_on:
       postgres:
         condition: service_healthy

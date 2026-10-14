@@ -25,6 +25,13 @@ function floatFrom(value: string | undefined, fallback: number): number {
   return n;
 }
 
+function boolFrom(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === '') return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`Invalid boolean env value: ${value}`);
+}
+
 export function readAgentConfig(
   source: Record<string, string | undefined> = process.env,
 ): AgentConfig {
@@ -49,9 +56,9 @@ export function readQuotaPlanDefaults(
 ): Record<'demo' | 'free' | 'pro', QuotaPlanDefaults> {
   return {
     demo: {
-      aiEnabled: false,
-      generationsLimit: 0,
-      monthlyCreditsUsd: floatFrom(source.DEMO_AI_CREDITS, 0),
+      aiEnabled: boolFrom(source.DEMO_AI_ENABLED, false),
+      generationsLimit: intFrom(source.DEMO_MONTHLY_AI_GENERATIONS, 2),
+      monthlyCreditsUsd: floatFrom(source.DEMO_MONTHLY_CREDITS_USD, 0.15),
     },
     free: {
       aiEnabled: true,

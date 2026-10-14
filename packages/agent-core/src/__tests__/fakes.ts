@@ -142,6 +142,32 @@ function evalComparison(chunks: unknown[], row: Row, table: object): boolean {
   return actual === expected;
 }
 
+function evalUpdateValue(value: unknown, row: Row, table: object): unknown {
+  if (!(value instanceof SQL)) return value;
+  let columnName: string | undefined;
+  let operand: unknown;
+  const visit = (chunks: unknown[]) => {
+    for (const chunk of chunks) {
+      if (chunk instanceof SQL) {
+        visit((chunk as unknown as { queryChunks: unknown[] }).queryChunks);
+        continue;
+      }
+      const rec = chunk as { constructor: { name: string }; name?: unknown; value?: unknown };
+      if (rec.constructor.name === 'Param') operand = rec.value;
+      else if (rec.constructor.name === 'StringChunk' && Array.isArray(rec.value)) {
+        const match = rec.value.join('').match(/\+\s*(-?\d+(?:\.\d+)?)/);
+        if (match) operand = Number(match[1]);
+      } else if (typeof rec.name === 'string') columnName = rec.name;
+    }
+  };
+  visit((value as unknown as { queryChunks: unknown[] }).queryChunks);
+  if (!columnName || operand === undefined) return value;
+  const key = columnMap(table).get(columnName) ?? columnName;
+  const current = row[key];
+  const sum = Number(current ?? 0) + Number(operand);
+  return typeof current === 'string' ? String(sum) : sum;
+}
+
 // Schema defaults mirrored from packages/database/src/schema.ts (applied on
 // insert when the caller does not provide a value, like the real DB would).
 const TABLE_DEFAULTS: Record<string, Row> = {
@@ -285,22 +311,41 @@ export function createFakeDb(seed: Record<string, Row[]> = {}): Db & FakeDb {
 
   const updateBuilder = (table: object) => ({
     set: (patch: Row) => ({
-      where: (cond: unknown) => ({
-        then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
-          try {
-            let count = 0;
-            for (const r of rowsFor(table)) {
-              if (evalCondition(cond, r, table)) {
-                Object.assign(r, patch);
-                count++;
+      where: (cond: unknown) => {
+        let updated: Row[] | null = null;
+        const persist = (): Row[] => {
+          if (updated) return updated;
+          updated = [];
+          for (const r of rowsFor(table)) {
+            if (evalCondition(cond, r, table)) {
+              for (const [key, value] of Object.entries(patch)) {
+                r[key] = evalUpdateValue(value, r, table);
               }
+              updated.push({ ...r });
             }
-            resolve({ rowCount: count });
+          }
+          return updated;
+        };
+        const chain: Record<string, unknown> = {
+          returning: (fields?: Record<string, { name: string }>) => ({
+            then: (resolve: (v: Row[]) => void, reject: (e: unknown) => void) => {
+              try {
+                resolve(persist().map((row) => project(row, table, fields)));
+              } catch (e) {
+                reject(e);
+              }
+            },
+          }),
+          then: (resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+          try {
+            resolve({ rowCount: persist().length });
           } catch (e) {
             reject(e);
           }
         },
-      }),
+        };
+        return chain;
+      },
     }),
   });
 

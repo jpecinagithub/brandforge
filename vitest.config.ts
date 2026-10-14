@@ -29,6 +29,11 @@ export default defineConfig({
           ],
           exclude: ['**/*.integration.test.ts', '**/node_modules/**'],
           testTimeout: 20000,
+          env: {
+            // Pure route-helper tests import the API config module but never
+            // connect; provide a syntactically valid placeholder URL.
+            DATABASE_URL: TEST_DATABASE_URL,
+          },
         },
       }),
       defineProject({

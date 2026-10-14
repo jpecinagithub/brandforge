@@ -165,6 +165,7 @@ export const ProjectSchema = z.object({
   isFavorite: z.boolean(),
   updatedAt: z.string(),
   campaignCount: z.number().int().nonnegative().optional(),
+  assetCount: z.number().int().nonnegative().optional(),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
@@ -257,6 +258,7 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 export const SendMessageInputSchema = z.object({
   content: z.string().trim().min(1, 'Message content is required').max(10000),
+  language: LanguageSchema.optional(),
 });
 export type SendMessageInput = z.infer<typeof SendMessageInputSchema>;
 

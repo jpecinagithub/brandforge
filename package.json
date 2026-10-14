@@ -6,15 +6,17 @@
   "name": "brandforge",
   "private": true,
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build:packages && npm run build:apps",
+    "build:packages": "npm run build --workspace=@brandforge/shared && npm run build --workspace=@brandforge/database && npm run build --workspace=@brandforge/integrations && npm run build --workspace=@brandforge/agent-core && npm run build --workspace=@brandforge/agent-server && npm run build --workspace=@brandforge/ui",
+    "build:apps": "npm run build --workspace=@brandforge/api && npm run build --workspace=@brandforge/worker && npm run build --workspace=@brandforge/web",
     "db:generate": "npm run db:generate --workspace=@brandforge/database",
     "db:migrate": "npm run db:migrate --workspace=@brandforge/database",
     "db:seed": "npm run db:seed --workspace=@brandforge/database",
     "test": "npm run test:unit && npm run test:integration",
-    "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration",
+    "test:unit": "npm run build:packages && vitest run --project unit",
+    "test:integration": "npm run build:packages && vitest run --project integration",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present"
   },
   "version": "0.1.0",
   "workspaces": [
@@ -23,6 +25,6 @@
   ],
   "devDependencies": {
     "@playwright/test": "^1.64.0",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.4"
   }
 }

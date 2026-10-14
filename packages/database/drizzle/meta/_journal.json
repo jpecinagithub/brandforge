@@ -15,6 +15,13 @@
       "when": 1791977536092,
       "tag": "0001_spicy_ulik",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791998692136,
+      "tag": "0002_crazy_hitman",
+      "breakpoints": true
     }
   ]
 }

@@ -16,7 +16,7 @@
  * - No infinite loops: maxSteps (planner), maxAttempts (resume),
  *   stepTimeoutMs / runTimeoutMs (timeouts).
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import {
   AgentPlanSchema,
   type AgentEventType,
@@ -322,6 +322,7 @@ export class Orchestrator {
   ): Promise<AgentRunRow> {
     const { language, emit } = ctx;
     const memory = this.ports.makeMemory();
+    const planningBudget = this.ports.makeBudget({ runId: run.id, workspaceId: ctx.workspaceId });
 
     let projectMemory: Record<string, unknown> = {};
     let brandKitSummary = '';
@@ -340,6 +341,7 @@ export class Orchestrator {
     }
 
     let plan: AgentPlan;
+    let planningCost = 0;
     try {
       plan = await withTimeout(
         planRun(this.openrouter, this.router, this.registry, {
@@ -348,22 +350,48 @@ export class Orchestrator {
           brandKitSummary,
           projectMemory,
           maxSteps: run.maxSteps,
+          onUsage: async (result) => {
+            const costUsd = result.usage.costUsd ?? 0;
+            planningCost += costUsd;
+            await planningBudget.recordUsage({
+              model: result.model,
+              tool: 'agent_planner',
+              tokensIn: result.usage.tokensIn,
+              tokensOut: result.usage.tokensOut,
+              costUsd,
+              durationMs: result.durationMs,
+            });
+            await emit('usage', {
+              model: result.model,
+              tool: 'agent_planner',
+              tokensIn: result.usage.tokensIn,
+              tokensOut: result.usage.tokensOut,
+              costUsd,
+            });
+          },
         }),
         this.config.runTimeoutMs,
         `Planning timed out after ${this.config.runTimeoutMs}ms`,
       );
     } catch (err) {
+      if (planningCost > 0) {
+        await this.db
+          .update(agentRuns)
+          .set({ costUsd: String(Number(run.costUsd ?? 0) + planningCost), updatedAt: new Date() })
+          .where(eq(agentRuns.id, run.id));
+      }
       const message = err instanceof Error ? err.message : String(err);
       await this.failRun(run, emit, message, language);
       return { ...run, status: 'failed' as RunState };
     }
 
     const planJson = { ...plan, language };
+    const costAfterPlanning = Number(run.costUsd ?? 0) + planningCost;
     await this.db
       .update(agentRuns)
-      .set({ plan: planJson, totalSteps: plan.steps.length, updatedAt: new Date() })
+      .set({ plan: planJson, totalSteps: plan.steps.length, costUsd: String(costAfterPlanning), updatedAt: new Date() })
       .where(eq(agentRuns.id, run.id));
-    run = { ...run, plan: planJson, totalSteps: plan.steps.length };
+    run = { ...run, plan: planJson, totalSteps: plan.steps.length, costUsd: String(costAfterPlanning) };
 
     const budgetUsd =
       run.budgetUsd != null ? Number(run.budgetUsd) : this.config.defaultBudgetUsd;
@@ -442,6 +470,7 @@ export class Orchestrator {
       language,
       openrouter: this.openrouter,
       router: this.router,
+      // Each parallel step receives its own reservation state below.
       budget: this.ports.makeBudget({ runId: run.id, workspaceId }),
       storage: this.ports.makeStorage({ workspaceId }),
       conversation: this.ports.makeConversation(),
@@ -466,7 +495,7 @@ export class Orchestrator {
       }
     }
 
-    await this.finishRun(run.id, { language, emit });
+    await this.finishRun(run.id, { workspaceId, language, emit });
   }
 
   private async executeStep(
@@ -514,6 +543,7 @@ export class Orchestrator {
     const argsHash = stableHash(step.args);
     const ctx: ToolContext = {
       ...base,
+      budget: this.ports.makeBudget({ runId: base.runId, workspaceId: base.workspaceId }),
       stepId: stepRow.id,
       emit: (type, payload) => emit(type, { ...payload, stepId: step.id }),
     };
@@ -712,13 +742,23 @@ export class Orchestrator {
       });
     }
 
-    const fresh = await this.loadRun(base.runId);
-    const newCost = Number(fresh.costUsd ?? 0) + costUsd;
-    const newCompleted = (fresh.completedSteps ?? 0) + 1;
-    await this.db
+    // Atomic increments are required because independent steps in the same
+    // topological level complete concurrently.
+    const [progress] = await this.db
       .update(agentRuns)
-      .set({ costUsd: String(newCost), completedSteps: newCompleted, updatedAt: new Date() })
-      .where(eq(agentRuns.id, base.runId));
+      .set({
+        costUsd: sql`${agentRuns.costUsd} + ${String(costUsd)}`,
+        completedSteps: sql`${agentRuns.completedSteps} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentRuns.id, base.runId))
+      .returning({
+        costUsd: agentRuns.costUsd,
+        completedSteps: agentRuns.completedSteps,
+        totalSteps: agentRuns.totalSteps,
+      });
+    const newCost = Number(progress.costUsd ?? 0);
+    const newCompleted = progress.completedSteps;
     await this.db
       .update(agentSteps)
       .set({
@@ -733,7 +773,7 @@ export class Orchestrator {
     await emit('step.completed', { stepId: step.id, tool: step.tool });
     await emit('run.progress', {
       completedSteps: newCompleted,
-      totalSteps: fresh.totalSteps,
+      totalSteps: progress.totalSteps,
       costUsd: newCost,
     });
   }
@@ -790,9 +830,9 @@ export class Orchestrator {
 
   private async finishRun(
     runId: string,
-    ctx: { language: 'en' | 'es'; emit: EmitFn },
+    ctx: { workspaceId: string; language: 'en' | 'es'; emit: EmitFn },
   ): Promise<void> {
-    const { language, emit } = ctx;
+    const { workspaceId, language, emit } = ctx;
     const run = await this.loadRun(runId);
     const steps = await this.db
       .select()
@@ -801,6 +841,9 @@ export class Orchestrator {
 
     let summary: string;
     try {
+      const summaryBudget = this.ports.makeBudget({ runId, workspaceId });
+      const affordable = await summaryBudget.checkAffordable(0.02);
+      if (!affordable.ok) throw new Error('Insufficient credits for run summary');
       const model = await this.router.select('review');
       const result = await withTimeout(
         this.openrouter.chat({
@@ -826,6 +869,26 @@ export class Orchestrator {
         this.config.runTimeoutMs,
         'Summary timed out',
       );
+      const summaryCost = result.usage.costUsd ?? 0;
+      await summaryBudget.recordUsage({
+        model: result.model,
+        tool: 'agent_summary',
+        tokensIn: result.usage.tokensIn,
+        tokensOut: result.usage.tokensOut,
+        costUsd: summaryCost,
+        durationMs: result.durationMs,
+      });
+      await this.db
+        .update(agentRuns)
+        .set({ costUsd: String(Number(run.costUsd ?? 0) + summaryCost), updatedAt: new Date() })
+        .where(eq(agentRuns.id, runId));
+      await emit('usage', {
+        model: result.model,
+        tool: 'agent_summary',
+        tokensIn: result.usage.tokensIn,
+        tokensOut: result.usage.tokensOut,
+        costUsd: summaryCost,
+      });
       summary = result.content;
     } catch {
       // Honest fallback: report what actually happened, never invent.

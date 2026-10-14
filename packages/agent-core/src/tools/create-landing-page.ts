@@ -1,7 +1,6 @@
 /**
- * create_landing_page (generate) — stores a landing page structure JSON in
- * landing_pages. The visual builder that renders/edits it ships in Phase 4;
- * this tool is data-only (documented in the stored schema).
+ * create_landing_page (generate) — stores a renderable landing-page schema.
+ * The workspace preview uses this record directly and safely escapes copy.
  *
  * Cost estimate heuristic: $0.01 (structure assembly; the copy itself comes
  * from generate_marketing_copy when needed).
@@ -19,6 +18,8 @@ const sectionSchema = z.object({
 const argsSchema = z.object({
   template: z.enum(['hero', 'minimal']),
   headline: z.string().trim().min(1).max(200),
+  subheadline: z.string().trim().min(1).max(400).optional(),
+  cta: z.string().trim().min(1).max(100).optional(),
   sections: z.array(sectionSchema).max(12).optional(),
 });
 
@@ -53,10 +54,10 @@ export const createLandingPageTool: AgentTool<Args> = {
       kind: 'landing_page',
       template: a.template,
       headline: a.headline,
+      subheadline: a.subheadline ?? 'Una propuesta clara, coherente y preparada para convertir.',
+      cta: a.cta ?? 'Descubrir la propuesta',
       sections: a.sections ?? defaultSections(a.template),
       version: 1,
-      builderNote:
-        'Data-only structure. The visual builder (Phase 4) renders and edits this schema.',
       createdAt: new Date().toISOString(),
     };
 

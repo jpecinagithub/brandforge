@@ -61,6 +61,7 @@ async function appendEntry(
   deltaCents: number,
   refType: string,
   refId: string | null,
+  reservationId: string | null = null,
 ): Promise<{ entryId: string; balanceAfter: string }> {
   await ensureQuotaRow(tx, workspaceId);
   const balance = await readBalanceCents(tx, workspaceId);
@@ -73,6 +74,7 @@ async function appendEntry(
       kind,
       refType,
       refId,
+      reservationId,
       balanceAfter: toUsd(after),
     })
     .returning({ id: creditLedger.id });
@@ -142,7 +144,8 @@ async function findReserve(
     .select()
     .from(creditLedger)
     .where(and(eq(creditLedger.id, reserveEntryId), eq(creditLedger.kind, 'reserve')))
-    .limit(1);
+    .limit(1)
+    .for('update');
   if (!reserve || reserve.workspaceId !== workspaceId) {
     throw new Error(`reserve entry not found: ${reserveEntryId}`);
   }
@@ -162,8 +165,14 @@ export async function settleReservation(
 ): Promise<{ entryId: string; balanceAfter: string }> {
   return db.transaction(async (tx) => {
     const { refType, refId, reservedCents } = await findReserve(tx, workspaceId, reserveEntryId);
+    const [alreadyClosed] = await tx
+      .select({ id: creditLedger.id, balanceAfter: creditLedger.balanceAfter })
+      .from(creditLedger)
+      .where(eq(creditLedger.reservationId, reserveEntryId))
+      .limit(1);
+    if (alreadyClosed) return { entryId: alreadyClosed.id, balanceAfter: alreadyClosed.balanceAfter };
     const diffCents = reservedCents - toCents(actualUsd); // +refund / -extra charge / 0
-    return appendEntry(tx, workspaceId, 'settle', diffCents, refType, refId);
+    return appendEntry(tx, workspaceId, 'settle', diffCents, refType, refId, reserveEntryId);
   });
 }
 
@@ -175,7 +184,13 @@ export async function refundReservation(
 ): Promise<{ entryId: string; balanceAfter: string }> {
   return db.transaction(async (tx) => {
     const { refType, refId, reservedCents } = await findReserve(tx, workspaceId, reserveEntryId);
-    return appendEntry(tx, workspaceId, 'refund', reservedCents, refType, refId);
+    const [alreadyClosed] = await tx
+      .select({ id: creditLedger.id, balanceAfter: creditLedger.balanceAfter })
+      .from(creditLedger)
+      .where(eq(creditLedger.reservationId, reserveEntryId))
+      .limit(1);
+    if (alreadyClosed) return { entryId: alreadyClosed.id, balanceAfter: alreadyClosed.balanceAfter };
+    return appendEntry(tx, workspaceId, 'refund', reservedCents, refType, refId, reserveEntryId);
   });
 }
 
@@ -201,11 +216,19 @@ export async function reconcileRunLedger(
       .orderBy(creditLedger.createdAt);
     if (reserves.length === 0) return { refunded: 0 };
     const settlements = await tx
-      .select({ id: creditLedger.id })
+      .select({ reservationId: creditLedger.reservationId })
       .from(creditLedger)
       .where(and(inArray(creditLedger.kind, ['settle', 'refund']), runRef));
+    const closed = new Set(settlements.flatMap((entry) => entry.reservationId ? [entry.reservationId] : []));
+    // Entries written before reservation_id existed can only be paired FIFO.
+    let legacyClosures = settlements.filter((entry) => !entry.reservationId).length;
     let refunded = 0;
-    for (const reserve of reserves.slice(settlements.length)) {
+    for (const reserve of reserves) {
+      if (closed.has(reserve.id)) continue;
+      if (legacyClosures > 0) {
+        legacyClosures -= 1;
+        continue;
+      }
       await refundReservation(tx, reserve.workspaceId, reserve.id);
       refunded += 1;
     }

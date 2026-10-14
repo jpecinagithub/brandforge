@@ -18,6 +18,7 @@ import {
   brandKits,
   campaigns,
   conversations,
+  landingPages,
   messages,
   projects,
 } from './schema.js';
@@ -57,6 +58,7 @@ export interface SeedDemoResult {
   projectId: string;
   campaignId: string;
   brandKitId: string;
+  landingPageId: string;
   conversationId: string;
   assetsCreated: number;
 }
@@ -93,6 +95,50 @@ export async function seedDemoContent(
       .returning();
     projectId = p.id;
     projectRows = [p];
+  }
+
+  // A real, renderable landing page makes the demo useful before the user
+  // spends any AI credits. Agent-created pages use the same schema.
+  const existingLandingPages = await db
+    .select()
+    .from(landingPages)
+    .where(eq(landingPages.projectId, projectId))
+    .limit(1);
+  let landingPageId: string;
+  if (existingLandingPages.length > 0) {
+    landingPageId = existingLandingPages[0].id;
+  } else {
+    const [landing] = await db
+      .insert(landingPages)
+      .values({
+        projectId,
+        name: 'Navidad en cada taza',
+        schema: {
+          kind: 'landing_page',
+          template: 'hero',
+          headline: 'Magia de Navidad en cada taza',
+          subheadline:
+            'Café Aroma, Bilbao — bebidas de temporada, villancicos en directo y una mesa cálida durante todo diciembre.',
+          cta: 'Ver el menú de Navidad',
+          sections: [
+            {
+              heading: '2×1 en capuchinos',
+              body: 'Todo diciembre, todas las tardes. Porque los días fríos se disfrutan mejor en compañía.',
+            },
+            {
+              heading: 'Turrón Latte',
+              body: 'Turrón, espresso y leche vaporizada bajo un delicado toque de canela.',
+            },
+            {
+              heading: 'Villancicos en directo',
+              body: 'Una tarde de música y barrio con entrada libre el 21 de diciembre.',
+            },
+          ],
+          version: 1,
+        },
+      })
+      .returning();
+    landingPageId = landing.id;
   }
 
   // Brand kit (upsert by project)
@@ -166,12 +212,12 @@ export async function seedDemoContent(
         conversationId,
         role: 'assistant',
         content:
-          'Welcome to BrandForge! This demo workspace includes a sample project, "Café Aroma — Christmas Campaign", with a brand kit, a campaign, and sample assets. In Phase 3, an AI orchestrator will generate creative here — for now, explore the building blocks.',
+          'Bienvenido a BrandForge. Este espacio incluye una campaña completa de Café Aroma, su identidad, recursos y una landing lista para previsualizar. Pídeme una nueva propuesta y podrás seguir cada paso de la ejecución.',
       },
       {
         conversationId,
         role: 'user',
-        content: 'Looks great — let me explore the sample brand kit first.',
+        content: 'Perfecto. Primero quiero explorar la identidad y la landing de ejemplo.',
       },
     ]);
   }
@@ -191,7 +237,7 @@ export async function seedDemoContent(
         'Demo assets were skipped — the PNGs are provided by a sibling agent and ' +
         'will be picked up automatically the next time the seed runs.',
     );
-    return { projectId, campaignId, brandKitId, conversationId, assetsCreated };
+    return { projectId, campaignId, brandKitId, landingPageId, conversationId, assetsCreated };
   }
   const existingAssets = await db
     .select()
@@ -221,5 +267,5 @@ export async function seedDemoContent(
   }
   console.log(`[seed] Seeded ${assetsCreated} demo asset(s) from seed-assets/.`);
 
-  return { projectId, campaignId, brandKitId, conversationId, assetsCreated };
+  return { projectId, campaignId, brandKitId, landingPageId, conversationId, assetsCreated };
 }

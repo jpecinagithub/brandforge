@@ -175,6 +175,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
           workspaceId: p.workspaceId,
           projectId,
           input: parsed.data.input,
+          language: parsed.data.language ?? (req.user.language === 'es' ? 'es' : 'en'),
           idempotencyKey: parsed.data.idempotencyKey,
           maxSteps: parsed.data.maxSteps,
           budgetUsd: parsed.data.budgetUsd,
