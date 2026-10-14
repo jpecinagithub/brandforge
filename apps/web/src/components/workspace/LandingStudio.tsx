@@ -25,6 +25,7 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<Device>('desktop');
   const [html, setHtml] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -90,6 +91,16 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
       });
     return () => controller.abort();
   }, [selectedId, refreshKey]);
+
+  useEffect(() => {
+    if (!html) {
+      setPreviewUrl('');
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [html]);
 
   if (loading) {
     return <div className="flex h-64 items-center justify-center text-violet-600"><Spinner size="lg" /></div>;
@@ -158,25 +169,27 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-4 2xl:grid-cols-[190px_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-4">
         <Card>
-          <CardContent className="space-y-2">
+          <CardContent>
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
               {t('workspace.landingPagesLabel')}
             </p>
-            {pages.map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                onClick={() => setSelectedId(page.id)}
-                className={`w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${selectedId === page.id ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
-              >
-                <span className="block truncate font-medium">{page.name}</span>
-                <span className={`mt-0.5 block text-xs ${selectedId === page.id ? 'text-violet-100' : 'text-slate-400'}`}>
-                  {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(page.updatedAt ?? page.createdAt))}
-                </span>
-              </button>
-            ))}
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {pages.map((page) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => setSelectedId(page.id)}
+                  className={`min-w-44 flex-1 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${selectedId === page.id ? 'bg-violet-600 text-white' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                >
+                  <span className="block truncate font-medium">{page.name}</span>
+                  <span className={`mt-0.5 block text-xs ${selectedId === page.id ? 'text-violet-100' : 'text-slate-400'}`}>
+                    {new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(page.updatedAt ?? page.createdAt))}
+                  </span>
+                </button>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
@@ -190,8 +203,8 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
             ) : (
               <iframe
                 title={selected?.name ?? t('workspace.landingTitle')}
-                srcDoc={html}
-                sandbox="allow-same-origin"
+                src={previewUrl || undefined}
+                sandbox=""
                 className="h-[620px] w-full border-0 bg-white"
               />
             )}
