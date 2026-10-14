@@ -12,9 +12,9 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Badge, EmptyState, Modal, Spinner } from '@brandforge/ui';
+import { Badge, Button, EmptyState, Modal, Spinner } from '@brandforge/ui';
 import { Bot, Check, ChevronDown, Circle, XCircle } from 'lucide-react';
-import { get } from '@/lib/api';
+import { get, post } from '@/lib/api';
 import type { AgentRun, AgentStep } from '@brandforge/shared';
 import { runStateLabelKey, runStateTone } from './agentUi';
 
@@ -29,6 +29,7 @@ export function AgentRunsHistory({ projectId, refreshKey }: AgentRunsHistoryProp
   const [runs, setRuns] = useState<AgentRun[] | null>(null);
   const [detail, setDetail] = useState<{ run: AgentRun; steps: AgentStep[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [deciding, setDeciding] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -38,6 +39,17 @@ export function AgentRunsHistory({ projectId, refreshKey }: AgentRunsHistoryProp
       setRuns([]);
     }
   }, [projectId]);
+
+  const decide = useCallback(async (runId: string, approved: boolean) => {
+    setDeciding(true);
+    try {
+      await post(`/api/v1/agent/runs/${runId}/approve`, { approved });
+      setDetail(null);
+      void load();
+    } finally {
+      setDeciding(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -125,9 +137,20 @@ export function AgentRunsHistory({ projectId, refreshKey }: AgentRunsHistoryProp
               </p>
             )}
             {detail.run.approval && (
-              <p className="break-words text-xs text-amber-700 dark:text-amber-300">
-                {t('agent.approveReason')}: {detail.run.approval.reason}
-              </p>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <p className="break-words text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  {t('agent.approveReason')}: {detail.run.approval.reason}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" onClick={() => void decide(detail.run.id, true)} disabled={deciding}>
+                    {deciding && <Spinner size="sm" />}
+                    {t('agent.approve')}
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => void decide(detail.run.id, false)} disabled={deciding}>
+                    {t('agent.reject')}
+                  </Button>
+                </div>
+              </div>
             )}
             {detail.steps.length === 0 ? (
               <EmptyState title={t('agent.noSteps')} />
