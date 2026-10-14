@@ -9,7 +9,7 @@ import { ApiError } from '@/lib/api';
 
 function passwordIssues(password: string): string[] {
   const issues: string[] = [];
-  if (password.length < 10) issues.push('min');
+  if (password.length < 8) issues.push('min');
   if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) issues.push('strength');
   return issues;
 }

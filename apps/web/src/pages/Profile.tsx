@@ -89,7 +89,7 @@ export function Profile() {
     e.preventDefault();
     setPwError('');
     setPwDone(false);
-    if (newPassword.length < 10) return setPwError(t('validation.passwordMin'));
+    if (newPassword.length < 8) return setPwError(t('validation.passwordMin'));
     if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/\d/.test(newPassword)) {
       return setPwError(t('validation.passwordStrength'));
     }

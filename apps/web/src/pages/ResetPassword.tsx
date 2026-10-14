@@ -19,7 +19,7 @@ export function ResetPassword() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    if (password.length < 10) return setError(t('validation.passwordMin'));
+    if (password.length < 8) return setError(t('validation.passwordMin'));
     if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password)) {
       return setError(t('validation.passwordStrength'));
     }
