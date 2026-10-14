@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Scan the shared workspace package as well as this app. Without this source,
+   production builds can omit Badge tone classes that are only used in UI. */
+@source "../../../packages/ui/src";
+
 /* Dark mode via class strategy (`.dark` on <html>) */
 @custom-variant dark (&:where(.dark, .dark *));
 
