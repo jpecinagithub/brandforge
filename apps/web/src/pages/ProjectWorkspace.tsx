@@ -304,6 +304,7 @@ export function ProjectWorkspace() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [mobileView, setMobileView] = useState<MobileView>('canvas');
+  const [chatDraftRequest, setChatDraftRequest] = useState<{ id: number; text: string } | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [descDraft, setDescDraft] = useState('');
@@ -371,6 +372,11 @@ export function ProjectWorkspace() {
     if (!project) return;
     await del(`/api/v1/projects/${project.id}`);
     navigate('/app');
+  };
+
+  const prepareLandingRequest = () => {
+    setChatDraftRequest({ id: Date.now(), text: t('workspace.landingAgentPrompt') });
+    setMobileView('chat');
   };
 
   if (loading) {
@@ -499,12 +505,12 @@ export function ProjectWorkspace() {
         {tab === 'campaigns' && <CampaignsTab projectId={project.id} onCountChange={loadProject} />}
         {tab === 'brandkit' && <BrandKitTab projectId={project.id} />}
         {tab === 'assets' && <AssetsTab projectId={project.id} />}
-        {tab === 'landing' && <LandingStudio projectId={project.id} onOpenChat={() => setMobileView('chat')} />}
+        {tab === 'landing' && <LandingStudio projectId={project.id} onOpenChat={prepareLandingRequest} />}
       </div>
     </div>
   );
 
-  const chat = <ChatPanel projectId={project.id} />;
+  const chat = <ChatPanel projectId={project.id} draftRequest={chatDraftRequest} />;
 
   const mobileTabs: { key: MobileView; label: string }[] = [
     { key: 'sidebar', label: t('workspace.mobileSidebar') },

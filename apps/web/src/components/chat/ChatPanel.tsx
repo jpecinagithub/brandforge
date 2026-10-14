@@ -43,7 +43,12 @@ interface SendMessageResponse {
   };
 }
 
-export function ChatPanel({ projectId }: { projectId: string }) {
+interface ChatDraftRequest {
+  id: number;
+  text: string;
+}
+
+export function ChatPanel({ projectId, draftRequest }: { projectId: string; draftRequest?: ChatDraftRequest | null }) {
   const { t, i18n } = useTranslation();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -54,6 +59,7 @@ export function ChatPanel({ projectId }: { projectId: string }) {
   const [liveRuns, setLiveRuns] = useState<AgentRun[]>([]);
   const [runsRefreshKey, setRunsRefreshKey] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchMessages = useCallback(async () => {
     const res = await get<{ conversation: Conversation; messages: ConversationMessage[]; agent: AgentAvailability }>(
@@ -74,6 +80,12 @@ export function ChatPanel({ projectId }: { projectId: string }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, liveRuns]);
+
+  useEffect(() => {
+    if (!draftRequest) return;
+    setInput((current) => current.trim() ? current : draftRequest.text);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [draftRequest]);
 
   const handleRunFinished = useCallback(
     (_runId: string) => {
@@ -177,6 +189,7 @@ export function ChatPanel({ projectId }: { projectId: string }) {
       <div className="border-t border-slate-200 p-3 dark:border-slate-800">
         <div className="flex gap-2">
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
