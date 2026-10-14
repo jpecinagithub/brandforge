@@ -38,6 +38,7 @@
   "scripts": {
     "build": "npm run build --workspace=@brandforge/shared --workspace=@brandforge/database && tsc -p tsconfig.json",
     "cleanup-demos": "tsx src/scripts/cleanup-demos.ts",
+    "db:migrate": "node dist/scripts/migrate.js",
     "dev": "tsx watch src/index.ts",
     "promote-admin": "tsx src/scripts/promote-admin.ts",
     "start": "node dist/index.js",

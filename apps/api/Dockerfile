@@ -52,6 +52,7 @@ COPY --from=build --chown=app:app /app/packages/shared/dist ./packages/shared/di
 COPY --from=build --chown=app:app /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build --chown=app:app /app/packages/database/dist ./packages/database/dist
 COPY --from=build --chown=app:app /app/packages/database/package.json ./packages/database/package.json
+COPY --from=build --chown=app:app /app/packages/database/drizzle ./packages/database/drizzle
 COPY --from=build --chown=app:app /app/packages/integrations/dist ./packages/integrations/dist
 COPY --from=build --chown=app:app /app/packages/integrations/package.json ./packages/integrations/package.json
 COPY --from=build --chown=app:app /app/packages/agent-core/dist ./packages/agent-core/dist
