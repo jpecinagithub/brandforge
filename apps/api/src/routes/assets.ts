@@ -5,13 +5,14 @@
  *  GET  /api/v1/assets/:id → file download (auth + membership required)
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { assets, type Asset, type Db } from '@brandforge/database';
 import { getDb } from '../db.js';
 import { Errors, sendError } from '../errors.js';
 import { audit, getMembership, requestMeta, roleAtLeast } from '../authz.js';
 import { projectGuard } from './projects.js';
-import { ASSET_MAX_BYTES, buildObjectPath, detectImage, getStorage } from '../storage.js';
+import { ASSET_MAX_BYTES, assetStorageCandidates, buildObjectPath, detectImage, getStorage } from '../storage.js';
 
 type Authed = FastifyRequest & { user: NonNullable<FastifyRequest['user']> };
 
@@ -50,24 +51,32 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     if (!detected) {
       return sendError(reply, 415, 'UNSUPPORTED_FILE', 'Asset must be a PNG, JPEG, GIF or WebP image');
     }
-    const [row] = await db
-      .insert(assets)
-      .values({
-        workspaceId: p.workspaceId,
-        projectId: p.id,
-        filename: '',
-        originalName: data.filename,
-        mime: detected.mime,
-        sizeBytes: buf.length,
-        kind: 'image',
-      })
-      .returning();
     const storage = getStorage();
-    const rel = await storage.put(buildObjectPath('assets', row.id, `asset${detected.ext}`), buf);
-    const [updated] = await db.update(assets).set({ filename: rel.split('/').pop() ?? rel }).where(eq(assets.id, row.id)).returning();
+    const assetId = randomUUID();
+    const rel = buildObjectPath('assets', assetId, `asset${detected.ext}`);
+    await storage.put(rel, buf);
+    let row: Asset;
+    try {
+      [row] = await db
+        .insert(assets)
+        .values({
+          id: assetId,
+          workspaceId: p.workspaceId,
+          projectId: p.id,
+          filename: rel,
+          originalName: data.filename,
+          mime: detected.mime,
+          sizeBytes: buf.length,
+          kind: 'image',
+        })
+        .returning();
+    } catch (error) {
+      await storage.remove(rel);
+      throw error;
+    }
     const { ip, userAgent } = requestMeta(request);
     await audit(db, { userId: req.user.rawId, action: 'asset.upload', ip, userAgent, meta: { assetId: row.id } });
-    return reply.code(201).send({ asset: toAssetApi(updated) });
+    return reply.code(201).send({ asset: toAssetApi(row) });
   });
 
   app.get('/api/v1/projects/:projectId/assets', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -86,22 +95,24 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     const role = await getMembership(db, req.user.rawId, a.workspaceId);
     if (!roleAtLeast(role, 'viewer')) return Errors.notFound(reply);
     const storage = getStorage();
-    const rel = a.filename.includes('/') ? a.filename : `assets/${a.filename}`;
-    try {
-      const data = await storage.get(rel);
-      // The SPA is served from Vercel while private assets live on the Oracle
-      // API origin. Helmet defaults CORP to `same-origin`, which makes the
-      // browser discard an otherwise-authorized <img> response. This only
-      // permits cross-origin embedding; the session and workspace membership
-      // checks above still protect the file itself.
-      return reply
-        .header('Cross-Origin-Resource-Policy', 'cross-origin')
-        .header('Cache-Control', 'private, no-store')
-        .type(a.mime)
-        .header('content-length', data.length)
-        .send(data);
-    } catch {
-      return Errors.notFound(reply, 'File not found on disk');
+    for (const rel of assetStorageCandidates(a.filename, a.workspaceId)) {
+      try {
+        const data = await storage.get(rel);
+        // The SPA is served from Vercel while private assets live on the Oracle
+        // API origin. Helmet defaults CORP to `same-origin`, which makes the
+        // browser discard an otherwise-authorized <img> response. This only
+        // permits cross-origin embedding; the session and workspace membership
+        // checks above still protect the file itself.
+        return reply
+          .header('Cross-Origin-Resource-Policy', 'cross-origin')
+          .header('Cache-Control', 'private, no-store')
+          .type(a.mime)
+          .header('content-length', data.length)
+          .send(data);
+      } catch {
+        // Try the next legacy layout before declaring the file missing.
+      }
     }
+    return Errors.notFound(reply, 'File not found on disk');
   });
 }

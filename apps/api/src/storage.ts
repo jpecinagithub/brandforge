@@ -92,6 +92,18 @@ export function buildObjectPath(kind: 'avatars' | 'assets', id: string, original
 }
 
 /**
+ * Resolve both current and legacy asset layouts.
+ *
+ * Uploaded files historically stored only the basename in Postgres and lived
+ * under `assets/`. Agent-generated files lived under `<workspaceId>/` but also
+ * stored only the basename. New rows persist their complete relative path.
+ */
+export function assetStorageCandidates(filename: string, workspaceId: string): string[] {
+  if (filename.includes('/')) return [filename];
+  return [`assets/${filename}`, `${workspaceId}/${filename}`];
+}
+
+/**
  * Detect an image's real type from magic bytes. Returns the extension and
  * canonical mime, or null when the bytes are not a supported image.
  */

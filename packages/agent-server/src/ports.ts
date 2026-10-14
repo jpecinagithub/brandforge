@@ -147,21 +147,29 @@ export function makeStorage(db: Db, workspaceId: string, storagePath: string): S
     async saveFile(input) {
       const filename = `${randomUUID()}.${extForMime(input.mimeType)}`;
       const dir = path.join(storagePath, workspaceId);
+      const relativePath = path.posix.join(workspaceId, filename);
       await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(path.join(dir, filename), input.data);
-      const [row] = await db
-        .insert(assets)
-        .values({
-          workspaceId,
-          filename,
-          originalName: input.name,
-          mime: input.mimeType,
-          sizeBytes: input.data.length,
-          kind: input.kind,
-          width: input.width ?? null,
-          height: input.height ?? null,
-        })
-        .returning({ id: assets.id });
+      const fullPath = path.join(dir, filename);
+      await fs.writeFile(fullPath, input.data);
+      let row: { id: string };
+      try {
+        [row] = await db
+          .insert(assets)
+          .values({
+            workspaceId,
+            filename: relativePath,
+            originalName: input.name,
+            mime: input.mimeType,
+            sizeBytes: input.data.length,
+            kind: input.kind,
+            width: input.width ?? null,
+            height: input.height ?? null,
+          })
+          .returning({ id: assets.id });
+      } catch (error) {
+        await fs.rm(fullPath, { force: true });
+        throw error;
+      }
       return { assetId: row.id, url: `/api/v1/assets/${row.id}` };
     },
   };
