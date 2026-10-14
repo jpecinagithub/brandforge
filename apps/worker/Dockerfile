@@ -41,6 +41,12 @@ RUN groupadd -r app && useradd -r -g app app \
   && mkdir -p /app/storage \
   && chown -R app:app /app
 COPY --from=build --chown=app:app /app/node_modules ./node_modules
+# Nested workspace node_modules (npm nests on version conflicts instead of
+# hoisting; e.g. drizzle-orm). Without these, ESM resolution fails at runtime.
+COPY --from=build --chown=app:app /app/packages/database/node_modules ./packages/database/node_modules
+COPY --from=build --chown=app:app /app/packages/agent-core/node_modules ./packages/agent-core/node_modules
+COPY --from=build --chown=app:app /app/packages/agent-server/node_modules ./packages/agent-server/node_modules
+COPY --from=build --chown=app:app /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=build --chown=app:app /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build --chown=app:app /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build --chown=app:app /app/packages/database/dist ./packages/database/dist
