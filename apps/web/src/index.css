@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/* Dark mode via class strategy (`.dark` on <html>) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle entrance animation used on cards/sections */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.5s ease-out both;
+}
+
+/* Custom scrollbar for chat + sidebars */
+.slim-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.slim-scroll::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184 / 0.4);
+  border-radius: 9999px;
+}

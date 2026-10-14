@@ -1,0 +1,38 @@
+{
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.38.4",
+    "postgres": "^3.4.5",
+    "argon2": "^0.44.0"
+  },
+  "description": "Drizzle ORM schema, migrations and seed tooling for BrandForge",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "drizzle-kit": "^0.31.4",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.2"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "drizzle",
+    "seed-assets"
+  ],
+  "main": "./dist/index.js",
+  "name": "@brandforge/database",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "db:generate": "node ./scripts/ensure-drizzle-link.mjs && drizzle-kit generate",
+    "db:migrate": "node ./scripts/ensure-drizzle-link.mjs && drizzle-kit migrate",
+    "db:seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "version": "0.1.0"
+}

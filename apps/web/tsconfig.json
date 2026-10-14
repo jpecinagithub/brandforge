@@ -1,0 +1,1 @@
+{"compilerOptions":{"jsx":"react-jsx","lib":["ES2022","DOM","DOM.Iterable"],"module":"esnext","moduleResolution":"bundler","noEmit":true,"paths":{"@/*":["./src/*"],"@brandforge/ui":["../../packages/ui/src/index.ts"]},"types":["vite/client"]},"extends":"../../tsconfig.base.json","include":["src","vite.config.ts"]}

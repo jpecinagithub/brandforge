@@ -1,0 +1,1 @@
+{"description":"BrandForge background worker (Phase 5 stub)","main":"./dist/index.js","name":"@brandforge/worker","private":true,"scripts":{"build":"tsc -p tsconfig.json","dev":"tsx watch src/index.ts","start":"node dist/index.js","typecheck":"tsc --noEmit -p tsconfig.json"},"type":"module","version":"0.1.0"}

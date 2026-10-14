@@ -1,0 +1,28 @@
+{
+  "description": "BrandForge AI — agentic SaaS platform for AI-driven marketing and branding (Phases 1-2: foundation + auth)",
+  "engines": {
+    "node": ">=20"
+  },
+  "name": "brandforge",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "db:generate": "npm run db:generate --workspace=@brandforge/database",
+    "db:migrate": "npm run db:migrate --workspace=@brandforge/database",
+    "db:seed": "npm run db:seed --workspace=@brandforge/database",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "vitest": "^3.2.4"
+  }
+}
