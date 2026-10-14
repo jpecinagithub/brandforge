@@ -317,7 +317,12 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {active && !streamError && <Spinner size="sm" />}
-          <Badge tone={runStateTone[runState]}>{t(runStateLabelKey[runState])}</Badge>
+          <Badge
+            tone={runStateTone[runState]}
+            className={active ? "animate-pulse text-sm font-semibold px-3 py-1" : undefined}
+          >
+            {t(runStateLabelKey[runState])}
+          </Badge>
         </div>
         {active && (
           <Button
