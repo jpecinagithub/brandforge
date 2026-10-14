@@ -1,4 +1,8 @@
 export const enEnhancements = {
+  agent: {
+    retry: 'Refresh status',
+    retryNote: 'Live updates paused, but the agent may still be working. Refresh the status whenever you want.',
+  },
   workspace: {
     agentAvailable: 'Agent ready',
     agentUnavailable: 'The agent is temporarily unavailable.',
@@ -20,6 +24,10 @@ export const enEnhancements = {
 } as const;
 
 export const esEnhancements = {
+  agent: {
+    retry: 'Actualizar estado',
+    retryNote: 'Las actualizaciones en directo se han pausado, pero el agente puede seguir trabajando. Actualiza el estado cuando quieras.',
+  },
   workspace: {
     agentAvailable: 'Agente preparado',
     agentUnavailable: 'El agente no está disponible temporalmente.',

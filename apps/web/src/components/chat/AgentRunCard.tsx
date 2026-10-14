@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Input, Spinner } from '@brandforge/ui';
-import { AlertCircle, Check, Circle, RotateCcw, Wrench, X, XCircle } from 'lucide-react';
+import { AlertCircle, Check, Circle, RefreshCw, Wrench, X, XCircle } from 'lucide-react';
 import { apiUrl, get, post } from '@/lib/api';
 import type { AgentRun, AgentStep, RunState } from '@brandforge/shared';
 import { isKnownRunState, isRunActive, runStateLabelKey, runStateTone } from './agentUi';
@@ -319,7 +319,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           {active && !streamError && <Spinner size="sm" />}
           <Badge
             tone={runStateTone[runState]}
-            className={active ? "animate-pulse text-sm font-semibold px-3 py-1" : undefined}
+            className={active ? 'px-3 py-1 text-sm font-semibold' : undefined}
           >
             {t(runStateLabelKey[runState])}
           </Badge>
@@ -457,11 +457,14 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
 
       {/* Stream error → manual retry (no infinite reconnect) */}
       {streamError && active && (
-        <div className="mt-2.5 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
-          <p className="text-xs text-red-700 dark:text-red-300">{t('agent.retryNote')}</p>
-          <Button size="sm" variant="secondary" className="mt-2" onClick={retry} icon={<RotateCcw size={14} />}>
-            {t('agent.retry')}
-          </Button>
+        <div className="mt-2.5 flex items-start gap-2.5 rounded-xl border border-sky-200 bg-sky-50/80 p-3 dark:border-sky-400/20 dark:bg-sky-400/[0.08]" role="status">
+          <RefreshCw size={15} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-300" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-xs leading-relaxed text-sky-900 dark:text-sky-100">{t('agent.retryNote')}</p>
+            <Button size="sm" variant="secondary" className="mt-2" onClick={retry} icon={<RefreshCw size={14} />}>
+              {t('agent.retry')}
+            </Button>
+          </div>
         </div>
       )}
 

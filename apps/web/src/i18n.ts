@@ -22,8 +22,20 @@ export function setStoredLanguage(lng: SupportedLanguage): void {
 
 void i18n.use(initReactI18next).init({
   resources: {
-    en: { translation: { ...en, workspace: { ...en.workspace, ...enEnhancements.workspace } } },
-    es: { translation: { ...es, workspace: { ...es.workspace, ...esEnhancements.workspace } } },
+    en: {
+      translation: {
+        ...en,
+        agent: { ...en.agent, ...enEnhancements.agent },
+        workspace: { ...en.workspace, ...enEnhancements.workspace },
+      },
+    },
+    es: {
+      translation: {
+        ...es,
+        agent: { ...es.agent, ...esEnhancements.agent },
+        workspace: { ...es.workspace, ...esEnhancements.workspace },
+      },
+    },
   },
   lng: getStoredLanguage(),
   fallbackLng: 'en',
