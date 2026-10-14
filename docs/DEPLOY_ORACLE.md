@@ -90,8 +90,8 @@ restart policies, bound to 127.0.0.1:3013.
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
 # Purpose: build images and start the stack detached.
 cd ~/apps/brandforge
-docker compose -f infrastructure/docker/docker-compose.yml up -d --build
-docker compose -f infrastructure/docker/docker-compose.yml ps
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml up -d --build
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml ps
 # Expected: postgres (healthy), api (running), worker (running)
 ```
 
@@ -107,7 +107,7 @@ If it fails, read the logs before anything else:
 
 ```bash
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
-docker compose -f infrastructure/docker/docker-compose.yml logs --tail=80 api
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml logs --tail=80 api
 ```
 
 Then migrate + seed (seed is a no-op in production unless explicitly allowed —
@@ -117,7 +117,7 @@ demo data stays local):
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
 # Purpose: apply DB migrations inside the api container.
 cd ~/apps/brandforge
-docker compose -f infrastructure/docker/docker-compose.yml exec api npm run db:migrate
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml exec api npm run db:migrate
 ```
 
 ---
@@ -206,7 +206,7 @@ from inside the api container. (Adjust the script name to whatever
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
 # Purpose: register first via the web app, then promote that email to admin.
 cd ~/apps/brandforge
-docker compose -f infrastructure/docker/docker-compose.yml exec api npm run admin:promote -- --email=tu@email.com
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml exec api npm run admin:promote -- --email=tu@email.com
 ```
 
 Verify: sign in on the web app — the admin section should now be visible.
@@ -221,14 +221,14 @@ Verify: sign in on the web app — the admin section should now be visible.
 # ── Shell: Oracle (ubuntu@oracle) ──────────────────────────────────────────
 # Purpose: stop the stack and restore the previous nginx vhost.
 cd ~/apps/brandforge
-docker compose -f infrastructure/docker/docker-compose.yml down
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml down
 # Restore nginx (pick the newest backup):
 ls -t /root/nginx-backups/mi-gps.*.bak | head -3
 sudo cp /root/nginx-backups/mi-gps.<FECHA>.bak /etc/nginx/sites-enabled/mi-gps
 sudo nginx -t && sudo systemctl reload nginx
 # To roll the CODE back: git log --oneline -5, then
 git fetch origin && git checkout <previous-sha>
-docker compose -f infrastructure/docker/docker-compose.yml up -d --build
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml up -d --build
 ```
 
 Database migrations are one-way by design — if a migration itself is the problem,
@@ -243,7 +243,7 @@ restore from the pre-deploy `pg_dump` (see `docs/BACKUP.md`) rather than guessin
 # Purpose: pull, rebuild, migrate — the standard update cycle.
 cd ~/apps/brandforge
 git pull --ff-only
-docker compose -f infrastructure/docker/docker-compose.yml up -d --build
-docker compose -f infrastructure/docker/docker-compose.yml exec api npm run db:migrate
-docker compose -f infrastructure/docker/docker-compose.yml ps
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml up -d --build
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml exec api npm run db:migrate
+docker compose --env-file .env -f infrastructure/docker/docker-compose.yml ps
 ```
