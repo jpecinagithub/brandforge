@@ -20,7 +20,7 @@ function decodeRfc2047(s: string): string {
       const buf =
         enc.toUpperCase() === 'B'
           ? Buffer.from(data, 'base64')
-          : Buffer.from(data.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (_h, hex) => String.fromCharCode(parseInt(hex, 16))), 'binary');
+          : Buffer.from(data.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (_h: string, hex: string) => String.fromCharCode(parseInt(hex, 16))), 'binary');
       return buf.toString((charset as string).toLowerCase().includes('utf') ? 'utf8' : 'latin1');
     } catch {
       return data;
