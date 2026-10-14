@@ -1,7 +1,7 @@
 /**
  * create_poster (generate) — builds a poster layout JSON from the brand kit
  * (colors/fonts) with an optional AI image, stored as a design document
- * {kind:'poster'}. The visual builder that renders it ships in Phase 4.
+ * {kind:'poster'} for the visual workspace.
  *
  * Cost estimate heuristic: $0.02 base + $0.04 when imagePrompt is present.
  */
@@ -99,7 +99,7 @@ export const createPosterTool: AgentTool<Args> = {
       tone: kit?.tone ?? '',
       imageAssetId: assetId ?? null,
       version: 1,
-      builderNote: 'Rendered by the visual builder (Phase 4); this document is data-only.',
+      builderNote: 'Poster layout ready for workspace rendering and export.',
     };
 
     const [doc] = await ctx.db

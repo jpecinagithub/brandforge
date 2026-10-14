@@ -1,7 +1,7 @@
 /**
  * Chat routes.
  *
- * GET  /api/v1/projects/:projectId/conversation → {conversation, messages}
+ * GET  /api/v1/projects/:projectId/conversation → {conversation, messages, agent}
  * POST /api/v1/conversations/:id/messages {content}
  *      → saves the user message. When OpenRouter is configured AND the
  *        workspace quota allows it (Phase 3), starts an agent run and returns
@@ -23,8 +23,30 @@ import { toAgentRunDto } from './agent.js';
 type Authed = FastifyRequest & { user: NonNullable<FastifyRequest['user']> };
 
 export const AI_NOT_CONFIGURED_NOTICE = 'AI_NOT_CONFIGURED';
-export const AI_STUB_REPLY =
-  'AI generation is not configured yet in this build (Phase 3). Your message was saved to the project conversation.';
+export const AI_QUOTA_UNAVAILABLE_NOTICE = 'AI_QUOTA_UNAVAILABLE';
+
+function unavailableReply(language: string, reason: 'not_configured' | 'quota_exhausted'): string {
+  if (language === 'es') {
+    return reason === 'quota_exhausted'
+      ? 'He guardado tu mensaje, pero este espacio ha agotado temporalmente su cuota de IA.'
+      : 'He guardado tu mensaje, pero el agente no está disponible temporalmente.';
+  }
+  return reason === 'quota_exhausted'
+    ? 'I saved your message, but this workspace has temporarily reached its AI allowance.'
+    : 'I saved your message, but the agent is temporarily unavailable.';
+}
+
+async function agentAvailability(db: Db, workspaceId: string) {
+  const agentServer = await import('@brandforge/agent-server');
+  if (!agentServer.isAiConfigured()) {
+    return { available: false as const, reason: 'not_configured' as const };
+  }
+  await agentServer.ensureWorkspaceQuota(db, workspaceId);
+  const allowed = await agentServer.checkAiAllowed(db, workspaceId);
+  return allowed.ok
+    ? { available: true as const }
+    : { available: false as const, reason: 'quota_exhausted' as const };
+}
 
 export function toMessageApi(m: Message) {
   return {
@@ -60,7 +82,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
       .orderBy(asc(messages.createdAt));
-    return { conversation: { id: conversationId }, messages: msgs.map(toMessageApi) };
+    const agent = await agentAvailability(db, p.workspaceId);
+    return { conversation: { id: conversationId }, messages: msgs.map(toMessageApi), agent };
   });
 
   app.post('/api/v1/conversations/:id/messages', { preHandler: [app.authenticate] }, async (request, reply) => {
@@ -83,44 +106,45 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     // workspace quota allows it. Lazy import keeps agent-server out of the
     // module graph until it is actually needed.
     const agentServer = await import('@brandforge/agent-server');
-    if (agentServer.isAiConfigured()) {
-      await agentServer.ensureWorkspaceQuota(db, p.workspaceId);
-      const allowed = await agentServer.checkAiAllowed(db, p.workspaceId);
-      if (allowed.ok) {
-        const started = await agentServer.startAgentRun(db, config.storagePath, {
-          userId: req.user.rawId,
-          workspaceId: p.workspaceId,
-          projectId: conv.projectId,
-          conversationId: id,
-          input: parsed.data.content,
-        });
-        if (!started.deduped) await agentServer.incrementGenerations(db, p.workspaceId);
-        const [row] = await db.select().from(agentRuns).where(eq(agentRuns.id, started.id)).limit(1);
-        await audit(db, {
-          userId: req.user.rawId,
-          action: 'chat.agent_run',
-          ip,
-          userAgent,
-          meta: { conversationId: id, runId: started.id },
-        });
-        return { message: toMessageApi(userMsg), run: toAgentRunDto(row) };
-      }
+    const availability = await agentAvailability(db, p.workspaceId);
+    if (availability.available) {
+      const started = await agentServer.startAgentRun(db, config.storagePath, {
+        userId: req.user.rawId,
+        workspaceId: p.workspaceId,
+        projectId: conv.projectId,
+        conversationId: id,
+        input: parsed.data.content,
+        language: parsed.data.language ?? (req.user.language === 'es' ? 'es' : 'en'),
+      });
+      if (!started.deduped) await agentServer.incrementGenerations(db, p.workspaceId);
+      const [row] = await db.select().from(agentRuns).where(eq(agentRuns.id, started.id)).limit(1);
+      await audit(db, {
+        userId: req.user.rawId,
+        action: 'chat.agent_run',
+        ip,
+        userAgent,
+        meta: { conversationId: id, runId: started.id },
+      });
+      return { message: toMessageApi(userMsg), run: toAgentRunDto(row) };
     }
 
-    // Honest stub (unchanged): AI not configured or quota exhausted.
+    // Honest fallback: preserve the brief and explain why no run started.
+    const notice = availability.reason === 'quota_exhausted'
+      ? AI_QUOTA_UNAVAILABLE_NOTICE
+      : AI_NOT_CONFIGURED_NOTICE;
     const [assistantMsg] = await db
       .insert(messages)
       .values({
         conversationId: id,
         role: 'assistant',
-        content: AI_STUB_REPLY,
-        meta: { notice: AI_NOT_CONFIGURED_NOTICE, stub: true },
+        content: unavailableReply(req.user.language, availability.reason),
+        meta: { notice, stub: true },
       })
       .returning();
     await audit(db, { userId: req.user.rawId, action: 'chat.stub_message', ip, userAgent, meta: { conversationId: id } });
     return {
       message: toMessageApi(userMsg),
-      reply: { ...toMessageApi(assistantMsg), notice: AI_NOT_CONFIGURED_NOTICE },
+      reply: { ...toMessageApi(assistantMsg), notice },
     };
   });
 }

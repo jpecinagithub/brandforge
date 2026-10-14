@@ -58,26 +58,44 @@ export function makeEmit(db: Db): (runId: string) => EmitFn {
 
 export function makeBudget(db: Db, workspaceId: string, runId: string): BudgetPort {
   let pendingReserveEntryId: string | null = null;
+  let pendingEstimateCents = 0;
 
   const releasePending = async (): Promise<void> => {
     if (!pendingReserveEntryId) return;
     const entryId = pendingReserveEntryId;
     pendingReserveEntryId = null;
+    pendingEstimateCents = 0;
     await refundReservation(db, workspaceId, entryId).catch(() => undefined);
   };
 
   return {
     async checkAffordable(estimatedUsd: number) {
+      const estimatedCents = Math.round(estimatedUsd * 100);
+      // Some tools enforce their own guard as well as the orchestrator. Reuse
+      // the existing hold when it already covers the nested check.
+      if (pendingReserveEntryId && pendingEstimateCents >= estimatedCents) {
+        return { ok: true };
+      }
       // Defensive: a previous generate step may have failed after its
       // reserve but before recordUsage — release that stale hold first.
       await releasePending();
       const res = await reserveCredits(db, workspaceId, estimatedUsd, 'agent_run', runId);
       if (!res.ok) return { ok: false, reason: res.reason };
       pendingReserveEntryId = res.entryId ?? null;
+      pendingEstimateCents = estimatedCents;
       return { ok: true };
     },
 
     async recordUsage(u) {
+      // Planner/reviewer calls are metered too. They may not have a pending
+      // tool hold, so place an exact post-call charge before persisting usage.
+      if (!pendingReserveEntryId && (u.costUsd ?? 0) > 0) {
+        const exact = await reserveCredits(db, workspaceId, u.costUsd ?? 0, 'agent_run', runId);
+        if (exact.ok) {
+          pendingReserveEntryId = exact.entryId ?? null;
+          pendingEstimateCents = Math.round((u.costUsd ?? 0) * 100);
+        }
+      }
       await db.insert(modelUsage).values({
         runId,
         model: u.model,
@@ -90,6 +108,7 @@ export function makeBudget(db: Db, workspaceId: string, runId: string): BudgetPo
       if (pendingReserveEntryId) {
         const entryId = pendingReserveEntryId;
         pendingReserveEntryId = null;
+        pendingEstimateCents = 0;
         // Never fail usage recording because of a ledger hiccup — the hold
         // stays on the books and the worker's post-run reconciliation
         // releases it; the usage row is the source of truth for tokens.

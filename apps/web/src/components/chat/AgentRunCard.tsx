@@ -45,7 +45,7 @@ interface UsageView {
   model?: string;
   tokensIn: number;
   tokensOut: number;
-  costUsd?: string | null;
+  costUsd: number;
 }
 
 function str(v: unknown): string | undefined {
@@ -75,7 +75,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
   const [totalSteps, setTotalSteps] = useState(initialRun.totalSteps);
   const [currentStepId, setCurrentStepId] = useState<string | null>(null);
   const [tools, setTools] = useState<ToolLine[]>([]);
-  const [usage, setUsage] = useState<UsageView>({ tokensIn: 0, tokensOut: 0 });
+  const [usage, setUsage] = useState<UsageView>({ tokensIn: 0, tokensOut: 0, costUsd: 0 });
   const [approval, setApproval] = useState<{ reason: string; requestedBudgetUsd: number } | null>(
     initialRun.approval
       ? { reason: initialRun.approval.reason, requestedBudgetUsd: initialRun.approval.requestedBudgetUsd }
@@ -107,11 +107,11 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
 
       switch (type) {
         case 'run.started':
-          setRunState('running');
+          setRunState('planning');
           setError(null);
           break;
         case 'run.state': {
-          const s = str(p.state);
+          const s = str(p.to) ?? str(p.state);
           if (s && isKnownRunState(s)) {
             setRunState(s);
             if (s !== 'waiting_approval') setApproval(null);
@@ -181,12 +181,12 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
             model: str(p.model) ?? prev.model,
             tokensIn: prev.tokensIn + (num(p.tokensIn) ?? 0),
             tokensOut: prev.tokensOut + (num(p.tokensOut) ?? 0),
-            costUsd: str(p.costUsd) ?? prev.costUsd,
+            costUsd: prev.costUsd + (num(p.costUsd) ?? 0),
           }));
           break;
         }
         case 'run.finished': {
-          const s = str(p.state);
+          const s = str(p.status) ?? str(p.state);
           finishedRef.current = true;
           esRef.current?.close();
           esRef.current = null;
@@ -402,14 +402,14 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
       )}
 
       {/* Usage line */}
-      {(tokensTotal > 0 || usage.costUsd) && (
+      {(tokensTotal > 0 || usage.costUsd > 0) && (
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           {usage.model && <span className="font-medium">{usage.model} · </span>}
           {t('agent.tokens', { tokens: tokensTotal })}
-          {usage.costUsd && (
+          {usage.costUsd > 0 && (
             <>
               {' · '}
-              {t('agent.cost')}: ${usage.costUsd}
+              {t('agent.cost')}: ${usage.costUsd.toFixed(4)}
             </>
           )}
         </p>

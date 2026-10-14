@@ -117,7 +117,7 @@ describe('project workspace flow', () => {
     expect(body.message.content).toBe('Design a launch campaign for our oat-milk latte');
     expect(body.reply.role).toBe('assistant');
     expect(body.reply.notice).toBe('AI_NOT_CONFIGURED');
-    expect(body.reply.content).toMatch(/Phase 3/);
+    expect(body.reply.content).toMatch(/temporarily unavailable/i);
 
     // both messages persisted
     const conv2 = await app.inject(authed(cookie, { method: 'GET', url: `/api/v1/projects/${projectId}/conversation` }));

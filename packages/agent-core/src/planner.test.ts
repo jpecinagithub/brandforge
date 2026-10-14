@@ -86,6 +86,18 @@ describe('planRun', () => {
     expect(client.chatCalls).toHaveLength(2);
   });
 
+  it('meters every provider response, including an invalid attempt', async () => {
+    const bad = JSON.stringify({ steps: [] });
+    const client = cannedClient([bad, JSON.stringify(GOOD_PLAN)]);
+    const metered: ChatResult[] = [];
+    await planRun(client, new FakeModelRouter(), createDefaultRegistry(), {
+      ...INPUT,
+      onUsage: async (result) => { metered.push(result); },
+    });
+    expect(metered).toHaveLength(2);
+    expect(metered.every((result) => result.usage.costUsd === 0.001)).toBe(true);
+  });
+
   it('rejects plans with dependency cycles', async () => {
     const cyclic = JSON.stringify({
       steps: [

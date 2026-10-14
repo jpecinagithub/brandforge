@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './i18n/en.json';
 import es from './i18n/es.json';
+import { enEnhancements, esEnhancements } from './i18n/enhancements';
 
 const STORAGE_KEY = 'bf_language';
 
@@ -21,8 +22,8 @@ export function setStoredLanguage(lng: SupportedLanguage): void {
 
 void i18n.use(initReactI18next).init({
   resources: {
-    en: { translation: en },
-    es: { translation: es },
+    en: { translation: { ...en, workspace: { ...en.workspace, ...enEnhancements.workspace } } },
+    es: { translation: { ...es, workspace: { ...es.workspace, ...esEnhancements.workspace } } },
   },
   lng: getStoredLanguage(),
   fallbackLng: 'en',

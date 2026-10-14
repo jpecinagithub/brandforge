@@ -5,7 +5,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { count, eq } from 'drizzle-orm';
-import { campaigns, projects, type Db, type Project } from '@brandforge/database';
+import { assets, campaigns, projects, type Db, type Project } from '@brandforge/database';
 import {
   CreateProjectInputSchema,
   FavoriteProjectInputSchema,
@@ -23,7 +23,12 @@ export async function campaignCountFor(db: Db, projectId: string): Promise<numbe
   return rows[0]?.n ?? 0;
 }
 
-export function toProjectApi(p: Project, campaignCount: number) {
+export async function assetCountFor(db: Db, projectId: string): Promise<number> {
+  const rows = await db.select({ n: count() }).from(assets).where(eq(assets.projectId, projectId));
+  return rows[0]?.n ?? 0;
+}
+
+export function toProjectApi(p: Project, campaignCount: number, assetCount = 0) {
   return {
     id: p.id,
     workspaceId: p.workspaceId,
@@ -32,6 +37,7 @@ export function toProjectApi(p: Project, campaignCount: number) {
     isFavorite: p.isFavorite,
     updatedAt: p.updatedAt ? p.updatedAt.toISOString() : p.createdAt.toISOString(),
     campaignCount,
+    assetCount,
   };
 }
 
@@ -71,7 +77,9 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     if (!role) return Errors.notFound(reply);
     const rows = await db.select().from(projects).where(eq(projects.workspaceId, workspaceId));
     const out = [];
-    for (const p of rows) out.push(toProjectApi(p, await campaignCountFor(db, p.id)));
+    for (const p of rows) {
+      out.push(toProjectApi(p, await campaignCountFor(db, p.id), await assetCountFor(db, p.id)));
+    }
     return { projects: out };
   });
 
@@ -98,7 +106,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const p = await projectGuard(db, request, reply, id, 'viewer');
     if (!p) return;
-    return { project: toProjectApi(p, await campaignCountFor(db, p.id)) };
+    return { project: toProjectApi(p, await campaignCountFor(db, p.id), await assetCountFor(db, p.id)) };
   });
 
   // ---- update
@@ -117,7 +125,7 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       .returning();
     const { ip, userAgent } = requestMeta(request);
     await audit(db, { userId: req.user.rawId, action: 'project.update', ip, userAgent, meta: { projectId: id } });
-    return { project: toProjectApi(updated, await campaignCountFor(db, id)) };
+    return { project: toProjectApi(updated, await campaignCountFor(db, id), await assetCountFor(db, id)) };
   });
 
   // ---- delete
@@ -144,6 +152,6 @@ export async function projectRoutes(app: FastifyInstance): Promise<void> {
       .set({ isFavorite: parsed.data.favorite, updatedAt: new Date() })
       .where(eq(projects.id, id))
       .returning();
-    return { project: toProjectApi(updated, await campaignCountFor(db, id)) };
+    return { project: toProjectApi(updated, await campaignCountFor(db, id), await assetCountFor(db, id)) };
   });
 }

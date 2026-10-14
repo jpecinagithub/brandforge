@@ -27,6 +27,8 @@ if (!existsSync(target)) {
   process.exit(1);
 }
 if (!existsSync(link)) {
-  symlinkSync(target, link, 'dir');
+  // Directory symlinks require Developer Mode or elevated privileges on
+  // Windows; a junction provides the same module-resolution behaviour.
+  symlinkSync(target, link, process.platform === 'win32' ? 'junction' : 'dir');
   console.log('[db] linked <repo>/node_modules/drizzle-orm for drizzle-kit');
 }

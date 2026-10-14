@@ -122,6 +122,7 @@ export const StartRunInputSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(100).optional(),
   maxSteps: z.number().int().min(1).max(50).default(25),
   budgetUsd: z.number().positive().max(50).optional(),
+  language: z.enum(['en', 'es']).optional(),
 });
 export type StartRunInput = z.infer<typeof StartRunInputSchema>;
 

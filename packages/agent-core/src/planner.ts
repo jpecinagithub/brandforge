@@ -17,6 +17,7 @@ import type {
   ModelRouter,
   OpenRouterClient,
   ORChatMessage,
+  ChatResult,
 } from './types.js';
 import type { ToolRegistry } from './tools/registry.js';
 import { creativeStrategist } from './roles.js';
@@ -35,6 +36,8 @@ export interface PlanRunInput {
   brandKitSummary: string;
   projectMemory: Record<string, unknown>;
   maxSteps: number;
+  /** Records every provider response, including an invalid response retried by the planner. */
+  onUsage?: (result: ChatResult) => Promise<void>;
 }
 
 const MAX_PLANNER_TOKENS = 4000;
@@ -89,6 +92,7 @@ Rules: 1..${input.maxSteps} steps. Ids are "s1","s2",... dependsOn may only refe
         jsonMode: true,
         timeoutMs: PLANNER_TIMEOUT_MS,
       });
+      await input.onUsage?.(result);
       return validatePlan(result.content, registry, input.maxSteps);
     } catch (err) {
       lastError = err;

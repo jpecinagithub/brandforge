@@ -34,7 +34,13 @@ import type {
   ChatResult,
   OpenRouterClient,
 } from '@brandforge/agent-core';
-import { buildTestOrchestrator } from '@brandforge/agent-server';
+import {
+  buildTestOrchestrator,
+  ensureWorkspaceQuota,
+  refundReservation,
+  reserveCredits,
+  settleReservation,
+} from '@brandforge/agent-server';
 import {
   authed,
   buildTestApp,
@@ -540,6 +546,28 @@ describe('full run cycle (fake OpenRouter, no network)', () => {
     const assistant = msgs.find((m) => m.role === 'assistant');
     expect(assistant).toBeDefined();
     expect(assistant!.content.length).toBeGreaterThan(0);
+  });
+});
+
+describe('credit reservation idempotency', () => {
+  it('closes each reservation once even when settle/refund is retried', async () => {
+    const { workspaceId } = await dbSetup();
+    await ensureWorkspaceQuota(db, workspaceId);
+    const reserve = await reserveCredits(db, workspaceId, 0.5, 'agent_run');
+    expect(reserve.ok).toBe(true);
+
+    await settleReservation(db, workspaceId, reserve.entryId!, 0.2);
+    await settleReservation(db, workspaceId, reserve.entryId!, 0.2);
+    await refundReservation(db, workspaceId, reserve.entryId!);
+
+    const adjustments = await db
+      .select()
+      .from(creditLedger)
+      .where(eq(creditLedger.reservationId, reserve.entryId!));
+    expect(adjustments).toHaveLength(1);
+    expect(adjustments[0].kind).toBe('settle');
+    const [quota] = await db.select().from(usageQuotas).where(eq(usageQuotas.workspaceId, workspaceId));
+    expect(Number(quota.creditsBalance)).toBe(4.8);
   });
 });
 
