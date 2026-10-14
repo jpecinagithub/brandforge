@@ -37,7 +37,7 @@ export interface Paginated<T> {
 // ---------------------------------------------------------------------------
 export const PasswordSchema = z
   .string()
-  .min(10, 'Password must be at least 10 characters')
+  .min(8, 'Password must be at least 8 characters')
   .max(200, 'Password is too long')
   .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
