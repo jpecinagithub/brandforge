@@ -14,7 +14,7 @@ COPY packages/integrations/package.json packages/integrations/
 COPY packages/agent-core/package.json packages/agent-core/
 COPY packages/agent-server/package.json packages/agent-server/
 COPY apps/worker/package.json apps/worker/
-RUN npm ci --workspaces --include-workspace-root
+RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY packages/database/src packages/database/src
