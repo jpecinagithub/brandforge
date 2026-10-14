@@ -15,10 +15,14 @@ COPY apps/api/package.json apps/api/
 RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
+COPY packages/database/tsconfig.json packages/database/
 COPY packages/database/src packages/database/src
 COPY packages/database/drizzle.config.ts packages/database/
+COPY packages/integrations/tsconfig.json packages/integrations/
 COPY packages/integrations/src packages/integrations/src
+COPY packages/agent-core/tsconfig.json packages/agent-core/
 COPY packages/agent-core/src packages/agent-core/src
+COPY packages/agent-server/tsconfig.json packages/agent-server/
 COPY packages/agent-server/src packages/agent-server/src
 COPY apps/api apps/api
 RUN npm run build --workspace=@brandforge/shared \

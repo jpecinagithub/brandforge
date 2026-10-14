@@ -17,6 +17,7 @@ COPY apps/worker/package.json apps/worker/
 RUN npm ci
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
+COPY packages/database/tsconfig.json packages/database/
 COPY packages/database/src packages/database/src
 COPY packages/database/drizzle.config.ts packages/database/
 COPY packages/integrations packages/integrations
