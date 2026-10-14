@@ -46,6 +46,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src'),
       '@brandforge/ui': path.resolve(__dirname, '../../packages/ui/src/index.ts'),
+      '@brandforge/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
   server: {
