@@ -158,21 +158,25 @@ export const projects = pgTable(
   (t) => [index('projects_workspace_idx').on(t.workspaceId)],
 );
 
-export const campaigns = pgTable('campaigns', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  objective: text('objective').notNull().default(''),
-  brief: text('brief').notNull().default(''),
-  audience: text('audience').notNull().default(''),
-  deliverables: jsonb('deliverables').notNull().default('[]'),
-  status: text('status').notNull().default('draft'),
-  isFavorite: boolean('is_favorite').notNull().default(false),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-});
+export const campaigns = pgTable(
+  'campaigns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    objective: text('objective').notNull().default(''),
+    brief: text('brief').notNull().default(''),
+    audience: text('audience').notNull().default(''),
+    deliverables: jsonb('deliverables').notNull().default('[]'),
+    status: text('status').notNull().default('draft'),
+    isFavorite: boolean('is_favorite').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (table) => [uniqueIndex('campaigns_project_uidx').on(table.projectId)],
+);
 
 export const brandKits = pgTable('brand_kits', {
   id: uuid('id').primaryKey().defaultRandom(),

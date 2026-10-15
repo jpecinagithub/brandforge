@@ -60,6 +60,11 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
     if (!p) return;
     const parsed = CreateCampaignInputSchema.safeParse(request.body);
     if (!parsed.success) return Errors.validation(reply, 'Invalid input', zodDetails(parsed.error));
+    const [existing] = await db.select().from(campaigns).where(eq(campaigns.projectId, projectId)).limit(1);
+    if (existing) {
+      const [updated] = await db.update(campaigns).set({ ...parsed.data, updatedAt: new Date() }).where(eq(campaigns.id, existing.id)).returning();
+      return reply.send({ campaign: toCampaignApi(updated) });
+    }
     const [c] = await db
       .insert(campaigns)
       .values({ projectId, ...parsed.data })

@@ -38,7 +38,8 @@ export function Dashboard() {
       const perProject = await Promise.all(projects.map(async (p) => {
         try {
           const response = await get<{ campaigns: Campaign[] }>(`/api/v1/projects/${p.id}/campaigns`);
-          return response.campaigns.map((campaign) => ({ ...campaign, projectId: p.id }));
+          const campaign = response.campaigns[0];
+          return campaign ? [{ ...campaign, projectId: p.id }] : [];
         } catch {
           return [];
         }

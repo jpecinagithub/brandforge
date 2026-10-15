@@ -357,6 +357,7 @@ export class Orchestrator {
         projectMemory = {
           ...projectMemory,
           campaignBrief: {
+            campaignId: campaign.id,
             name: campaign.name,
             objective: campaign.objective,
             brief: campaign.brief,
