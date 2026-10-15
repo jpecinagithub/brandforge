@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, CardContent, CardIcon, EmptyState, Spinner } from '@brandforge/ui';
-import { FolderKanban, Megaphone, Coins, Plus, Star, ArrowRight, Coffee, Rocket, UtensilsCrossed } from 'lucide-react';
+import { FolderKanban, Megaphone, Coins, Plus, Star } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { get, patch } from '@/lib/api';
 import type { Campaign, Project, Workspace } from '@/lib/types';
@@ -12,12 +12,6 @@ interface RecentCampaign extends Campaign {
   projectName: string;
   projectId: string;
 }
-
-const templateMeta = [
-  { key: 'template1', icon: <Coffee size={20} /> },
-  { key: 'template2', icon: <Rocket size={20} /> },
-  { key: 'template3', icon: <UtensilsCrossed size={20} /> },
-];
 
 export function Dashboard() {
   const { t } = useTranslation();
@@ -68,8 +62,6 @@ export function Dashboard() {
   const recent = useMemo(() => campaigns.slice(0, 5), [campaigns]);
   const favorites = useMemo(() => campaigns.filter((campaign) => campaign.isFavorite), [campaigns]);
   const campaignCount = useMemo(() => projects.reduce((n, p) => n + (p.campaignCount ?? 0), 0), [projects]);
-  const demoProjectId = projects[0]?.id;
-
   const toggleCampaignFavorite = async (campaign: RecentCampaign) => {
     const favorite = !campaign.isFavorite;
     setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: favorite } : item));
@@ -123,31 +115,6 @@ export function Dashboard() {
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.statsCredits')}</p></div>
         </CardContent></Card>
       </div>
-
-      {/* Templates */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">{t('dashboard.templatesTitle')}</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {templateMeta.map((tpl, i) => (
-            <Card key={tpl.key} className="p-5 transition-transform hover:-translate-y-0.5">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
-                {tpl.icon}
-              </div>
-              <h3 className="font-semibold text-slate-900 dark:text-white">{t(`dashboard.${tpl.key}Title`)}</h3>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t(`dashboard.${tpl.key}Desc`)}</p>
-              {i === 0 && demoProjectId ? (
-                <Link to={`/app/projects/${demoProjectId}`} className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:text-violet-500 dark:text-violet-400">
-                  {t('dashboard.openDemoProject')} <ArrowRight size={15} />
-                </Link>
-              ) : (
-                <button onClick={() => setModalOpen(true)} className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-violet-600 hover:text-violet-500 dark:text-violet-400">
-                  {t('dashboard.useTemplate')} <ArrowRight size={15} />
-                </button>
-              )}
-            </Card>
-          ))}
-        </div>
-      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent campaigns */}

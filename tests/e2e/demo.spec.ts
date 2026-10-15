@@ -18,7 +18,7 @@ test('demo entry lands on /app with banner, Café Aroma project and agent status
   await expect(page.getByText('Café Aroma — Christmas Campaign')).toBeVisible();
 
   // open the workspace → chat panel reports the unavailable test agent calmly
-  await page.getByRole('link', { name: /Open demo project/ }).click();
+  await page.locator('a[href^="/app/projects/"]').first().click();
   await expect(page).toHaveURL(/\/app\/projects\/.+/);
   await expect(page.getByText('The agent is temporarily unavailable.').first()).toBeVisible();
 
