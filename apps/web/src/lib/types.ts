@@ -17,20 +17,9 @@ export interface Workspace {
   role: string;
 }
 
-export interface Project {
-  id: string;
-  workspaceId: string;
-  name: string;
-  description?: string | null;
-  isFavorite: boolean;
-  updatedAt: string;
-  campaignCount: number;
-  assetCount: number;
-}
-
 export interface Campaign {
   id: string;
-  projectId: string;
+  workspaceId: string;
   name: string;
   objective?: string | null;
   brief: string;
@@ -38,6 +27,7 @@ export interface Campaign {
   deliverables: CampaignDeliverable[];
   status: string;
   isFavorite: boolean;
+  assetCount: number;
   updatedAt: string;
 }
 
@@ -80,7 +70,7 @@ export interface AgentAvailability {
 
 export interface LandingPage {
   id: string;
-  projectId: string;
+  campaignId: string;
   name: string;
   schema: unknown;
   createdAt: string;
@@ -106,7 +96,6 @@ export interface AdminOverview {
   usersActive: number;
   usersBlocked: number;
   demoActive: number;
-  projectsTotal: number;
   campaignsTotal: number;
   agentRunsTotal: number;
   errorsLast24h: number;

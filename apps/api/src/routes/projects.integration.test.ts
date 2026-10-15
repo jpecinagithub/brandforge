@@ -64,6 +64,60 @@ function multipartBody(boundary: string, fields: Record<string, string>, file: {
 }
 
 describe('project workspace flow', () => {
+  it('creates and manages a complete campaign through the canonical API', async () => {
+    const { cookie } = await registerVerifyLogin(app);
+    const workspaceId = await createWorkspace(app, cookie);
+
+    const created = await app.inject(
+      authed(cookie, {
+        method: 'POST',
+        url: '/api/v1/campaigns',
+        payload: {
+          workspaceId,
+          name: 'Autumn launch',
+          objective: 'Generate qualified leads',
+          brief: 'Launch the new collection in October.',
+          audience: 'Independent retailers',
+          deliverables: ['brand_kit', 'landing_page'],
+        },
+      }),
+    );
+    expect(created.statusCode).toBe(201);
+    const campaign = created.json().campaign as { id: string; workspaceId: string; assetCount: number };
+    expect(campaign.workspaceId).toBe(workspaceId);
+    expect(campaign.assetCount).toBe(0);
+
+    const listed = await app.inject(authed(cookie, { method: 'GET', url: `/api/v1/campaigns?workspaceId=${workspaceId}` }));
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().campaigns).toHaveLength(1);
+    expect(listed.json().campaigns[0].id).toBe(campaign.id);
+
+    const updated = await app.inject(
+      authed(cookie, { method: 'PATCH', url: `/api/v1/campaigns/${campaign.id}`, payload: { isFavorite: true } }),
+    );
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().campaign.isFavorite).toBe(true);
+
+    const brandKit = await app.inject(
+      authed(cookie, {
+        method: 'PUT',
+        url: `/api/v1/campaigns/${campaign.id}/brand-kit`,
+        payload: { brandName: 'Autumn Studio', colors: ['#7C3AED'] },
+      }),
+    );
+    expect(brandKit.statusCode).toBe(200);
+
+    const conversation = await app.inject(
+      authed(cookie, { method: 'GET', url: `/api/v1/campaigns/${campaign.id}/conversation` }),
+    );
+    expect(conversation.statusCode).toBe(200);
+
+    const removed = await app.inject(authed(cookie, { method: 'DELETE', url: `/api/v1/campaigns/${campaign.id}` }));
+    expect(removed.statusCode).toBe(200);
+    const missing = await app.inject(authed(cookie, { method: 'GET', url: `/api/v1/campaigns/${campaign.id}` }));
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('project → campaign → brand kit → chat stub (AI_NOT_CONFIGURED, persisted)', async () => {
     const { cookie } = await registerVerifyLogin(app);
     const wsId = await createWorkspace(app, cookie);

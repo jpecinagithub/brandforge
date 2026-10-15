@@ -128,7 +128,7 @@ export type StartRunInput = z.infer<typeof StartRunInputSchema>;
 
 export const AgentRunSchema = z.object({
   id: z.string().uuid(),
-  projectId: z.string().uuid(),
+  campaignId: z.string().uuid(),
   conversationId: z.string().uuid().nullable(),
   state: RunStateSchema,
   input: z.string(),

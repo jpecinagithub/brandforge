@@ -193,7 +193,7 @@ export type FavoriteProjectInput = z.infer<typeof FavoriteProjectInputSchema>;
 // ---------------------------------------------------------------------------
 export const CampaignSchema = z.object({
   id: z.string().uuid(),
-  projectId: z.string().uuid(),
+  workspaceId: z.string().uuid(),
   name: z.string(),
   objective: z.string(),
   brief: z.string(),
@@ -201,9 +201,21 @@ export const CampaignSchema = z.object({
   deliverables: z.array(z.enum(['logo', 'brand_kit', 'print_assets', 'landing_page'])),
   status: z.string(),
   isFavorite: z.boolean(),
+  assetCount: z.number().int().nonnegative().default(0),
   updatedAt: z.string(),
 });
 export type Campaign = z.infer<typeof CampaignSchema>;
+
+/** Canonical campaign input. A campaign is the root workspace entity. */
+export const CreateRootCampaignInputSchema = z.object({
+  workspaceId: z.string().uuid(),
+  name: z.string().trim().min(1, 'Name is required').max(200),
+  objective: z.string().max(2000).default(''),
+  brief: z.string().max(8000).default(''),
+  audience: z.string().max(3000).default(''),
+  deliverables: z.array(z.enum(['logo', 'brand_kit', 'print_assets', 'landing_page'])).max(4).default([]),
+});
+export type CreateRootCampaignInput = z.infer<typeof CreateRootCampaignInputSchema>;
 
 export const CreateCampaignInputSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(200),
@@ -230,7 +242,7 @@ export type UpdateCampaignInput = z.infer<typeof UpdateCampaignInputSchema>;
 // ---------------------------------------------------------------------------
 export const BrandKitSchema = z.object({
   id: z.string().uuid(),
-  projectId: z.string().uuid(),
+  campaignId: z.string().uuid(),
   brandName: z.string(),
   tagline: z.string(),
   description: z.string(),
@@ -296,7 +308,6 @@ export const AdminOverviewSchema = z.object({
   usersActive: z.number().int(),
   usersBlocked: z.number().int(),
   demoActive: z.number().int(),
-  projectsTotal: z.number().int(),
   campaignsTotal: z.number().int(),
   agentRunsTotal: z.number().int(),
   errorsLast24h: z.number().int(),

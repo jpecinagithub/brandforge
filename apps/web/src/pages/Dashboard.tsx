@@ -5,20 +5,15 @@ import { Badge, Button, Card, CardContent, CardIcon, EmptyState, Spinner } from 
 import { Image as ImageIcon, Megaphone, Plus, Star, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { del, get, patch } from '@/lib/api';
-import type { Campaign, Project, Workspace } from '@/lib/types';
+import type { Campaign, Workspace } from '@/lib/types';
 import { NewCampaignModal } from '@/components/NewCampaignModal';
-
-interface RecentCampaign extends Campaign {
-  projectId: string;
-}
 
 export function Dashboard() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [campaigns, setCampaigns] = useState<RecentCampaign[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -29,26 +24,13 @@ export function Dashboard() {
       const ws = workspaces[0] ?? null;
       setWorkspace(ws);
       if (!ws) {
-        setProjects([]);
         setCampaigns([]);
         return;
       }
-      const { projects } = await get<{ projects: Project[] }>(`/api/v1/projects?workspaceId=${ws.id}`);
-      setProjects(projects);
-      const perProject = await Promise.all(projects.map(async (p) => {
-        try {
-          const response = await get<{ campaigns: Campaign[] }>(`/api/v1/projects/${p.id}/campaigns`);
-          const campaign = response.campaigns[0];
-          return campaign ? [{ ...campaign, projectId: p.id }] : [];
-        } catch {
-          return [];
-        }
-      }));
-      const all = perProject.flat();
+      const { campaigns: all } = await get<{ campaigns: Campaign[] }>(`/api/v1/campaigns?workspaceId=${ws.id}`);
       all.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
       setCampaigns(all);
     } catch {
-      setProjects([]);
       setCampaigns([]);
     } finally {
       setLoading(false);
@@ -60,8 +42,8 @@ export function Dashboard() {
   }, [load]);
 
   const favorites = useMemo(() => campaigns.filter((campaign) => campaign.isFavorite), [campaigns]);
-  const assetCount = useMemo(() => projects.reduce((total, project) => total + (project.assetCount ?? 0), 0), [projects]);
-  const toggleCampaignFavorite = async (campaign: RecentCampaign) => {
+  const assetCount = useMemo(() => campaigns.reduce((total, campaign) => total + (campaign.assetCount ?? 0), 0), [campaigns]);
+  const toggleCampaignFavorite = async (campaign: Campaign) => {
     const favorite = !campaign.isFavorite;
     setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: favorite } : item));
     try {
@@ -72,12 +54,11 @@ export function Dashboard() {
     }
   };
 
-  const deleteCampaign = async (campaign: RecentCampaign) => {
+  const deleteCampaign = async (campaign: Campaign) => {
     if (!window.confirm(t('dashboard.deleteCampaignConfirm', { name: campaign.name }))) return;
     try {
-      await del(`/api/v1/projects/${campaign.projectId}`);
-      setCampaigns((current) => current.filter((item) => item.projectId !== campaign.projectId));
-      setProjects((current) => current.filter((project) => project.id !== campaign.projectId));
+      await del(`/api/v1/campaigns/${campaign.id}`);
+      setCampaigns((current) => current.filter((item) => item.id !== campaign.id));
     } catch {
       window.alert(t('dashboard.deleteCampaignError'));
     }
@@ -137,7 +118,7 @@ export function Dashboard() {
               <ul className="slim-scroll max-h-[30rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
                 {campaigns.map((c) => (
                   <li key={c.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <Link to={`/app/campaigns/${c.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
+                    <Link to={`/app/campaigns/${c.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{c.name}</p>
                         {c.objective ? <p className="truncate text-xs text-slate-500 dark:text-slate-400">{c.objective}</p> : null}
@@ -178,7 +159,7 @@ export function Dashboard() {
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {favorites.map((campaign) => (
                   <li key={campaign.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <Link to={`/app/campaigns/${campaign.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
+                    <Link to={`/app/campaigns/${campaign.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <Star size={15} className="shrink-0 fill-amber-400 text-amber-400" />
                         <div className="min-w-0">

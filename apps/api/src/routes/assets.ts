@@ -1,10 +1,10 @@
 /**
  * Asset routes:
- *  POST /api/v1/assets (multipart: projectId field + file) → 201 {asset}
- *  GET  /api/v1/projects/:projectId/assets → {assets}
+ *  POST /api/v1/assets (multipart: campaignId field + file) → 201 {asset}
+ *  GET  /api/v1/campaigns/:campaignId/assets → {assets}
  *  GET  /api/v1/assets/:id → file download (auth + membership required)
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { assets, type Asset, type Db } from '@brandforge/database';
@@ -37,9 +37,9 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     const data = await request.file();
     if (!data) return sendError(reply, 400, 'BAD_REQUEST', 'No file uploaded');
     const fields = data.fields as unknown as Record<string, { value?: unknown } | undefined>;
-    const projectId = fields['projectId']?.value;
+    const projectId = fields['campaignId']?.value ?? fields['projectId']?.value;
     if (typeof projectId !== 'string' || projectId.length === 0) {
-      return sendError(reply, 400, 'BAD_REQUEST', 'projectId field is required');
+      return sendError(reply, 400, 'BAD_REQUEST', 'campaignId field is required');
     }
     const p = await projectGuard(db, request, reply, projectId, 'editor');
     if (!p) return;
@@ -79,13 +79,16 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send({ asset: toAssetApi(row) });
   });
 
-  app.get('/api/v1/projects/:projectId/assets', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { projectId } = request.params as { projectId: string };
+  const listAssets = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = request.params as { projectId?: string; campaignId?: string };
+    const projectId = params.campaignId ?? params.projectId ?? '';
     const p = await projectGuard(db, request, reply, projectId, 'viewer');
     if (!p) return;
     const rows = await db.select().from(assets).where(eq(assets.projectId, projectId));
     return { assets: rows.map(toAssetApi) };
-  });
+  };
+  app.get('/api/v1/campaigns/:campaignId/assets', { preHandler: [app.authenticate] }, listAssets);
+  app.get('/api/v1/projects/:projectId/assets', { preHandler: [app.authenticate] }, listAssets);
 
   app.get('/api/v1/assets/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const req = request as Authed;

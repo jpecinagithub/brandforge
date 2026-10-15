@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { Button, Input, Modal } from '@brandforge/ui';
 import { FileImage, Image as ImageIcon, LayoutTemplate, Palette, Sparkles, Upload, X } from 'lucide-react';
 import { get, post } from '@/lib/api';
-import type { Campaign, CampaignDeliverable, Project, Workspace } from '@/lib/types';
+import type { Campaign, CampaignDeliverable, Workspace } from '@/lib/types';
 
 interface NewCampaignModalProps {
   open: boolean;
   onClose: () => void;
-  onCreated: (projectId: string) => void;
+  onCreated: (campaignId: string) => void;
 }
 
 const deliverableOptions: Array<{ id: CampaignDeliverable; icon: typeof Sparkles; labelKey: string; descriptionKey: string }> = [
@@ -57,22 +57,19 @@ export function NewCampaignModal({ open, onClose, onCreated }: NewCampaignModalP
       const { workspaces } = await get<{ workspaces: Workspace[] }>('/api/v1/workspaces');
       const workspace = workspaces[0];
       if (!workspace) throw new Error(t('errors.generic'));
-      const { project } = await post<{ project: Project }>('/api/v1/projects', {
+      const { campaign } = await post<{ campaign: Campaign }>('/api/v1/campaigns', {
         workspaceId: workspace.id,
         name: name.trim(),
-        description: brief.trim(),
-      });
-      await post<{ campaign: Campaign }>(`/api/v1/projects/${project.id}/campaigns`, {
-        name: name.trim(), objective: objective.trim(), brief: brief.trim(), audience: audience.trim(), deliverables,
+        objective: objective.trim(), brief: brief.trim(), audience: audience.trim(), deliverables,
       });
       await Promise.all(files.map(async (file) => {
         const form = new FormData();
-        form.append('projectId', project.id);
+        form.append('campaignId', campaign.id);
         form.append('file', file);
         await post('/api/v1/assets', form);
       }));
       onClose();
-      onCreated(project.id);
+      onCreated(campaign.id);
     } catch {
       setError(t('newCampaignModal.createError'));
     } finally {

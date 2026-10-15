@@ -10,7 +10,7 @@ import { defineConfig } from '@playwright/test';
  *           built with VITE_API_URL=http://localhost:3014 (see tests/README).
  *
  * The specs drive the UI like a user: demo entry, register → verify (token
- * read from the maildir) → login → project/campaign/brand-kit/asset flows.
+ * read from the maildir) → login → campaign/brand-kit/asset flows.
  */
 export default defineConfig({
   testDir: '.',

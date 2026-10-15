@@ -1,8 +1,8 @@
 /**
- * AgentRunsHistory — collapsible run history for the project, rendered above
+ * AgentRunsHistory — collapsible run history for the campaign, rendered above
  * the chat thread (works in the desktop chat column and the mobile chat view).
  *
- * - List: GET /api/v1/projects/:projectId/agent/runs → {runs: AgentRun[]}
+ * - List: GET /api/v1/campaigns/:campaignId/agent/runs → {runs: AgentRun[]}
  *   with a state badge + cost per run; refreshes when `refreshKey` changes
  *   (e.g. after a run finishes in the chat).
  * - Click a run → modal with GET /api/v1/agent/runs/:runId → {run, steps}.
@@ -19,11 +19,11 @@ import type { AgentRun, AgentStep } from '@brandforge/shared';
 import { runStateLabelKey, runStateTone } from './agentUi';
 
 interface AgentRunsHistoryProps {
-  projectId: string;
+  campaignId: string;
   refreshKey: number;
 }
 
-export function AgentRunsHistory({ projectId, refreshKey }: AgentRunsHistoryProps) {
+export function AgentRunsHistory({ campaignId, refreshKey }: AgentRunsHistoryProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [runs, setRuns] = useState<AgentRun[] | null>(null);
@@ -33,12 +33,12 @@ export function AgentRunsHistory({ projectId, refreshKey }: AgentRunsHistoryProp
 
   const load = useCallback(async () => {
     try {
-      const res = await get<{ runs: AgentRun[] }>(`/api/v1/projects/${projectId}/agent/runs`);
+      const res = await get<{ runs: AgentRun[] }>(`/api/v1/campaigns/${campaignId}/agent/runs`);
       setRuns(res.runs ?? []);
     } catch {
       setRuns([]);
     }
-  }, [projectId]);
+  }, [campaignId]);
 
   const decide = useCallback(async (runId: string, approved: boolean) => {
     setDeciding(true);

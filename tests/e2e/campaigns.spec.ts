@@ -1,7 +1,4 @@
-/**
- * E2E (logged in via a demo session cookie): create project → favorite →
- * create campaign → edit brand kit → upload avatar → delete project.
- */
+/** E2E: canonical campaign lifecycle, including favorite, brand kit and deletion. */
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 
@@ -17,28 +14,24 @@ test.beforeEach(async ({ page, request }) => {
   await page.context().addCookies([{ name: 'bf_session', value: token!, domain: 'localhost', path: '/' }]);
 });
 
-test('project lifecycle: create, favorite, campaign, brand kit, avatar, delete', async ({ page }) => {
-  const projectName = `E2E Lifecycle ${Date.now()}`;
+test('campaign lifecycle: create, favorite, brand kit, avatar, delete', async ({ page }) => {
+  const campaignName = `E2E Lifecycle ${Date.now()}`;
   await page.goto('/app');
 
-  // ---- create project via the New Campaign modal
+  // ---- create one canonical campaign
   await page.getByRole('button', { name: 'New Campaign' }).first().click();
-  await page.getByLabel('Project name').fill(projectName);
+  await page.getByLabel('Campaign name').fill(campaignName);
+  await page.getByLabel('Main objective').fill('Generate launch demand');
   await page.getByRole('button', { name: 'Create campaign' }).click();
-  await expect(page).toHaveURL(/\/app\/projects\/.+/);
-  const projectUrl = page.url();
-  await expect(page.getByText(projectName).first()).toBeVisible();
-
-  // ---- favorite it
-  await page.getByRole('button', { name: 'Favorite' }).click();
-  await expect(page.locator('button[aria-label="Favorite"] svg.fill-amber-400').first()).toBeVisible();
-
-  // ---- create a campaign (inline form on the Campaigns tab)
-  await page.getByRole('tab', { name: 'Campaigns' }).click();
-  const campaignName = `E2E Campaign ${Date.now()}`;
-  await page.getByLabel('Name', { exact: true }).fill(campaignName);
-  await page.getByRole('button', { name: 'New campaign' }).click();
+  await expect(page).toHaveURL(/\/app\/campaigns\/.+/);
+  const campaignUrl = page.url();
   await expect(page.getByText(campaignName).first()).toBeVisible();
+
+  // ---- favorite it from the dashboard
+  await page.goto('/app');
+  await page.getByRole('button', { name: `Add ${campaignName} to favorites` }).click();
+  await expect(page.getByRole('button', { name: `Remove ${campaignName} from favorites` }).first()).toBeVisible();
+  await page.getByRole('link').filter({ hasText: campaignName }).first().click();
 
   // ---- edit the brand kit name
   await page.getByRole('tab', { name: 'Brand kit' }).click();
@@ -47,10 +40,6 @@ test('project lifecycle: create, favorite, campaign, brand kit, avatar, delete',
   await expect(page.getByText('Brand kit saved')).toBeVisible();
 
   // ---- upload an avatar on the profile page (seed PNG)
-  // NOTE: the upload succeeds API-side (avatarPath persisted), but the web UI
-  // never displays it — it reads `user.avatarUrl` while the API returns
-  // `avatarPath`, and nothing maps one to the other. Product bug, reported
-  // separately; the E2E asserts the honest API contract.
   await page.goto('/app/profile');
   const [uploadRes] = await Promise.all([
     page.waitForResponse(
@@ -65,11 +54,11 @@ test('project lifecycle: create, favorite, campaign, brand kit, avatar, delete',
   });
   expect(me.user.avatarPath).toBeTruthy();
 
-  // ---- delete the project
-  await page.goto(projectUrl);
-  await page.getByRole('tab', { name: 'Overview' }).click();
-  await page.getByRole('button', { name: 'Delete project' }).click();
+  // ---- delete the campaign
+  await page.goto(campaignUrl);
+  await page.getByRole('tab', { name: 'Briefing' }).click();
+  await page.getByRole('button', { name: 'Delete campaign' }).click();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page).toHaveURL(/\/app$/);
-  await expect(page.getByText(projectName)).toHaveCount(0);
+  await expect(page.getByText(campaignName)).toHaveCount(0);
 });

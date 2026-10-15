@@ -42,15 +42,15 @@ test('register → verify → login → new campaign → logout → login', asyn
     if (!res.ok) throw new Error(`workspace create failed: ${res.status}`);
   });
 
-  // ---- create project via the New Campaign modal
-  const projectName = `E2E Project ${Date.now()}`;
+  // ---- create a campaign through the canonical flow
+  const campaignName = `E2E Campaign ${Date.now()}`;
   await page.getByRole('button', { name: 'New Campaign' }).first().click();
-  await expect(page.getByRole('heading', { name: 'New campaign' })).toBeVisible();
-  await page.getByLabel('Project name').fill(projectName);
-  await page.getByLabel(/Campaign objective/).fill('Drive pre-orders');
+  await expect(page.getByRole('heading', { name: 'Create a campaign' })).toBeVisible();
+  await page.getByLabel('Campaign name').fill(campaignName);
+  await page.getByLabel('Main objective').fill('Drive pre-orders');
   await page.getByRole('button', { name: 'Create campaign' }).click();
-  await expect(page).toHaveURL(/\/app\/projects\/.+/);
-  await expect(page.getByText(projectName).first()).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/campaigns\/.+/);
+  await expect(page.getByText(campaignName).first()).toBeVisible();
 
   // ---- logout → login again
   await page.getByRole('button', { name: 'Log out' }).click();
@@ -60,5 +60,5 @@ test('register → verify → login → new campaign → logout → login', asyn
   await page.getByLabel('Password', { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole('button', { name: 'Log in' }).click();
   await expect(page).toHaveURL(/\/app$/);
-  await expect(page.getByText(projectName).first()).toBeVisible();
+  await expect(page.getByText(campaignName).first()).toBeVisible();
 });

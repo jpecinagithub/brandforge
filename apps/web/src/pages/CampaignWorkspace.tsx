@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Card, CardContent, EmptyState, Input, Modal, Spinner } from '@brandforge/ui';
 import { ArrowLeft, Check, Download, ImagePlus, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
 import { del, get, patch, post, put, assetUrl, ApiError } from '@/lib/api';
-import type { Asset, BrandKit, Campaign, CampaignDeliverable, Project } from '@/lib/types';
+import type { Asset, BrandKit, Campaign, CampaignDeliverable } from '@/lib/types';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { NewCampaignModal } from '@/components/NewCampaignModal';
 import { LandingStudio } from '@/components/workspace/LandingStudio';
@@ -24,7 +24,7 @@ const deliverableLabels: Record<CampaignDeliverable, string> = {
 
 const emptyBrandKit: BrandKit = { brandName: '', tagline: '', description: '', colors: [], fonts: [], tone: '', audience: '' };
 
-function BrandKitTab({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
+function BrandKitTab({ campaignId, refreshKey }: { campaignId: string; refreshKey: number }) {
   const { t } = useTranslation();
   const [kit, setKit] = useState<BrandKit>(emptyBrandKit);
   const [colorsText, setColorsText] = useState('');
@@ -35,7 +35,7 @@ function BrandKitTab({ projectId, refreshKey }: { projectId: string; refreshKey:
 
   useEffect(() => {
     setLoading(true);
-    get<{ brandKit: BrandKit }>(`/api/v1/projects/${projectId}/brand-kit`)
+    get<{ brandKit: BrandKit }>(`/api/v1/campaigns/${campaignId}/brand-kit`)
       .then((response) => {
         setKit({ ...emptyBrandKit, ...response.brandKit });
         setColorsText((response.brandKit.colors ?? []).join(', '));
@@ -46,12 +46,12 @@ function BrandKitTab({ projectId, refreshKey }: { projectId: string; refreshKey:
         setKit(emptyBrandKit); setColorsText(''); setFontsText('');
       })
       .finally(() => setLoading(false));
-  }, [projectId, refreshKey]);
+  }, [campaignId, refreshKey]);
 
   const save = async () => {
     setSaving(true); setSaved(false);
     try {
-      const response = await put<{ brandKit: BrandKit }>(`/api/v1/projects/${projectId}/brand-kit`, {
+      const response = await put<{ brandKit: BrandKit }>(`/api/v1/campaigns/${campaignId}/brand-kit`, {
         ...kit,
         colors: colorsText.split(',').map((value) => value.trim()).filter(Boolean),
         fonts: fontsText.split(',').map((value) => value.trim()).filter(Boolean),
@@ -87,21 +87,21 @@ function BrandKitTab({ projectId, refreshKey }: { projectId: string; refreshKey:
   );
 }
 
-function AssetsTab({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
+function AssetsTab({ campaignId, refreshKey }: { campaignId: string; refreshKey: number }) {
   const { t } = useTranslation();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
-    try { setAssets((await get<{ assets: Asset[] }>(`/api/v1/projects/${projectId}/assets`)).assets ?? []); }
+    try { setAssets((await get<{ assets: Asset[] }>(`/api/v1/campaigns/${campaignId}/assets`)).assets ?? []); }
     catch { setAssets([]); } finally { setLoading(false); }
-  }, [projectId]);
+  }, [campaignId]);
   useEffect(() => { void load(); }, [load, refreshKey]);
   const upload = async (file: File) => {
     setUploading(true);
     try {
-      const form = new FormData(); form.append('projectId', projectId); form.append('file', file);
+      const form = new FormData(); form.append('campaignId', campaignId); form.append('file', file);
       const response = await post<{ asset: Asset }>('/api/v1/assets', form);
       setAssets((current) => [response.asset, ...current]);
     } finally { setUploading(false); }
@@ -118,13 +118,12 @@ function AssetsTab({ projectId, refreshKey }: { projectId: string; refreshKey: n
   </div>;
 }
 
-export function ProjectWorkspace() {
+export function CampaignWorkspace() {
   const { t } = useTranslation();
   const { id = '' } = useParams();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
   const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [siblings, setSiblings] = useState<Project[]>([]);
+  const [siblings, setSiblings] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('briefing');
   const [mobileView, setMobileView] = useState<MobileView>('canvas');
@@ -144,44 +143,36 @@ export function ProjectWorkspace() {
   const loadCampaign = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const projectResponse = await get<{ project: Project }>(`/api/v1/projects/${id}`);
-      const [campaignResponse, siblingResponse] = await Promise.all([
-        get<{ campaigns: Campaign[] }>(`/api/v1/projects/${id}/campaigns`),
-        get<{ projects: Project[] }>(`/api/v1/projects?workspaceId=${projectResponse.project.workspaceId}`),
-      ]);
-      const primary = campaignResponse.campaigns[0] ?? null;
-      setProject(projectResponse.project); setCampaign(primary); setSiblings(siblingResponse.projects ?? []);
-      setNameDraft(primary?.name ?? projectResponse.project.name);
-      setObjectiveDraft(primary?.objective ?? ''); setBriefDraft(primary?.brief ?? projectResponse.project.description ?? '');
-      setAudienceDraft(primary?.audience ?? ''); setDeliverablesDraft(primary?.deliverables ?? []);
-    } catch { if (showLoading) { setProject(null); setCampaign(null); } }
+      const { campaign: loaded } = await get<{ campaign: Campaign }>(`/api/v1/campaigns/${id}`);
+      const { campaigns: related } = await get<{ campaigns: Campaign[] }>(`/api/v1/campaigns?workspaceId=${loaded.workspaceId}`);
+      setCampaign(loaded); setSiblings(related);
+      setNameDraft(loaded.name); setObjectiveDraft(loaded.objective ?? ''); setBriefDraft(loaded.brief ?? '');
+      setAudienceDraft(loaded.audience ?? ''); setDeliverablesDraft(loaded.deliverables ?? []);
+    } catch { if (showLoading) setCampaign(null); }
     finally { if (showLoading) setLoading(false); }
   }, [id]);
   useEffect(() => { void loadCampaign(); }, [loadCampaign]);
 
   const saveCampaign = async () => {
-    if (!project || !campaign) return;
+    if (!campaign) return;
     setSaving(true); setSaved(false);
     try {
-      const [projectResponse, campaignResponse] = await Promise.all([
-        patch<{ project: Project }>(`/api/v1/projects/${project.id}`, { name: nameDraft.trim() || project.name, description: briefDraft.trim() }),
-        patch<{ campaign: Campaign }>(`/api/v1/campaigns/${campaign.id}`, { name: nameDraft.trim() || campaign.name, objective: objectiveDraft.trim(), brief: briefDraft.trim(), audience: audienceDraft.trim(), deliverables: deliverablesDraft }),
-      ]);
-      setProject(projectResponse.project); setCampaign(campaignResponse.campaign); setNameDraft(campaignResponse.campaign.name);
+      const { campaign: updated } = await patch<{ campaign: Campaign }>(`/api/v1/campaigns/${campaign.id}`, { name: nameDraft.trim() || campaign.name, objective: objectiveDraft.trim(), brief: briefDraft.trim(), audience: audienceDraft.trim(), deliverables: deliverablesDraft });
+      setCampaign(updated); setNameDraft(updated.name);
       setEditingName(false); setSaved(true); window.setTimeout(() => setSaved(false), 2000);
     } finally { setSaving(false); }
   };
 
-  const deleteCampaign = async () => { if (!project) return; await del(`/api/v1/projects/${project.id}`); navigate('/app'); };
+  const deleteCampaign = async () => { if (!campaign) return; await del(`/api/v1/campaigns/${campaign.id}`); navigate('/app'); };
   const prepareLandingRequest = () => { setChatDraftRequest({ id: Date.now(), text: t('workspace.landingAgentPrompt') }); setMobileView('chat'); };
   const refreshAgentResults = useCallback(() => { setResultsRefreshKey((key) => key + 1); void loadCampaign(false); }, [loadCampaign]);
 
   if (loading) return <Loading large />;
-  if (!project || !campaign) return <Card><EmptyState icon={<Megaphone size={26} />} title={t('errors.notFound')} action={<Link to="/app"><Button variant="secondary">{t('common.back')}</Button></Link>} /></Card>;
+  if (!campaign) return <Card><EmptyState icon={<Megaphone size={26} />} title={t('errors.notFound')} action={<Link to="/app"><Button variant="secondary">{t('common.back')}</Button></Link>} /></Card>;
 
   const sidebar = <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
     <div className="flex items-center justify-between px-4 py-3"><h3 className="text-sm font-semibold text-slate-900 dark:text-white">{t('workspace.campaigns')}</h3><button type="button" onClick={() => setNewCampaignOpen(true)} aria-label={t('dashboard.newCampaign')} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-violet-600 dark:text-slate-400 dark:hover:bg-slate-800"><Plus size={17} /></button></div>
-    <div className="slim-scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">{siblings.map((sibling) => <Link key={sibling.id} to={`/app/campaigns/${sibling.id}`} className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors ${sibling.id === project.id ? 'bg-violet-600/10 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Megaphone size={15} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{sibling.name}</span></Link>)}</div>
+    <div className="slim-scroll min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-4">{siblings.map((sibling) => <Link key={sibling.id} to={`/app/campaigns/${sibling.id}`} className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors ${sibling.id === campaign.id ? 'bg-violet-600/10 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'}`}><Megaphone size={15} className="shrink-0" /><span className="min-w-0 flex-1 truncate">{sibling.name}</span></Link>)}</div>
   </div>;
 
   const canvas = <div className="flex h-full min-h-0 flex-col">
@@ -199,20 +190,20 @@ export function ProjectWorkspace() {
         </CardContent></Card>
         <Card><CardContent><button type="button" onClick={() => setDeleteOpen(true)} className="inline-flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-500 dark:text-red-400"><Trash2 size={15} />{t('workspace.deleteCampaign')}</button></CardContent></Card>
       </div> : null}
-      {tab === 'brandkit' ? <BrandKitTab projectId={project.id} refreshKey={resultsRefreshKey} /> : null}
-      {tab === 'assets' ? <AssetsTab projectId={project.id} refreshKey={resultsRefreshKey} /> : null}
-      {tab === 'landing' ? <LandingStudio projectId={project.id} onOpenChat={prepareLandingRequest} refreshKey={resultsRefreshKey} /> : null}
+      {tab === 'brandkit' ? <BrandKitTab campaignId={campaign.id} refreshKey={resultsRefreshKey} /> : null}
+      {tab === 'assets' ? <AssetsTab campaignId={campaign.id} refreshKey={resultsRefreshKey} /> : null}
+      {tab === 'landing' ? <LandingStudio campaignId={campaign.id} onOpenChat={prepareLandingRequest} refreshKey={resultsRefreshKey} /> : null}
     </div>
   </div>;
 
-  const chat = <ChatPanel projectId={project.id} draftRequest={chatDraftRequest} onResultsChanged={refreshAgentResults} />;
+  const chat = <ChatPanel campaignId={campaign.id} draftRequest={chatDraftRequest} onResultsChanged={refreshAgentResults} />;
   const mobileTabs: Array<{ key: MobileView; label: string }> = [{ key: 'sidebar', label: t('workspace.mobileSidebar') }, { key: 'canvas', label: t('workspace.mobileCanvas') }, { key: 'chat', label: t('workspace.mobileChat') }];
 
   return <div className="min-w-0 overflow-hidden -m-4 sm:-m-6 lg:-m-8">
     <div className="flex gap-1 border-b border-slate-200 bg-white p-2 lg:hidden dark:border-slate-800 dark:bg-slate-950" role="tablist" aria-label={t('workspace.mobileViews')}>{mobileTabs.map((item) => <button key={item.key} type="button" role="tab" aria-selected={mobileView === item.key} onClick={() => setMobileView(item.key)} className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium ${mobileView === item.key ? 'bg-violet-600 text-white' : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'}`}>{item.label}</button>)}</div>
     <div className="hidden h-[calc(100vh-4rem-3.5rem)] min-h-[560px] lg:grid lg:grid-cols-[240px_minmax(0,1fr)_340px]"><div className="min-h-0 border-r border-slate-200 dark:border-slate-800">{sidebar}</div><div className="min-h-0 min-w-0">{canvas}</div><div className="min-h-0 border-l border-slate-200 dark:border-slate-800"><Card className="h-full !rounded-none !border-0">{chat}</Card></div></div>
     <div className="h-[calc(100dvh-4rem-3.5rem-3.25rem)] min-h-[480px] lg:hidden">{mobileView === 'sidebar' ? sidebar : null}{mobileView === 'canvas' ? canvas : null}{mobileView === 'chat' ? chat : null}</div>
-    <NewCampaignModal open={newCampaignOpen} onClose={() => setNewCampaignOpen(false)} onCreated={(campaignProjectId) => navigate(`/app/campaigns/${campaignProjectId}`)} />
+    <NewCampaignModal open={newCampaignOpen} onClose={() => setNewCampaignOpen(false)} onCreated={(campaignId) => navigate(`/app/campaigns/${campaignId}`)} />
     <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)} title={t('workspace.deleteCampaign')}><p className="text-sm text-slate-600 dark:text-slate-300">{t('workspace.deleteCampaignConfirmAll')}</p><div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setDeleteOpen(false)}>{t('common.cancel')}</Button><Button variant="danger" onClick={() => void deleteCampaign()} icon={<Trash2 size={15} />}>{t('common.delete')}</Button></div></Modal>
   </div>;
 }

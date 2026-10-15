@@ -1,5 +1,5 @@
 /**
- * ChatPanel — project agent chat with live, persisted run progress.
+ * ChatPanel — campaign agent chat with live, persisted run progress.
  *
  * Send flow per the agent contract:
  *  1. POST /api/v1/conversations/:id/messages {content}
@@ -50,11 +50,11 @@ interface ChatDraftRequest {
 }
 
 export function ChatPanel({
-  projectId,
+  campaignId,
   draftRequest,
   onResultsChanged,
 }: {
-  projectId: string;
+  campaignId: string;
   draftRequest?: ChatDraftRequest | null;
   onResultsChanged?: () => void;
 }) {
@@ -72,22 +72,22 @@ export function ChatPanel({
 
   const fetchMessages = useCallback(async () => {
     const res = await get<{ conversation: Conversation; messages: ConversationMessage[]; agent: AgentAvailability }>(
-      `/api/v1/projects/${projectId}/conversation`,
+      `/api/v1/campaigns/${campaignId}/conversation`,
     );
     setConversation(res.conversation);
     setMessages(res.messages ?? []);
     setAgentStatus(res.agent.available ? 'available' : (res.agent.reason ?? 'not_configured'));
-  }, [projectId]);
+  }, [campaignId]);
 
   const fetchActiveRuns = useCallback(async () => {
-    const res = await get<{ runs: AgentRun[] }>(`/api/v1/projects/${projectId}/agent/runs`);
+    const res = await get<{ runs: AgentRun[] }>(`/api/v1/campaigns/${campaignId}/agent/runs`);
     const activeRuns = (res.runs ?? []).filter((run) => isRunActive(run.state));
     setLiveRuns((current) => {
       const activeIds = new Set(activeRuns.map((run) => run.id));
       const finishedFromThisView = current.filter((run) => !isRunActive(run.state) && !activeIds.has(run.id));
       return [...finishedFromThisView, ...activeRuns];
     });
-  }, [projectId]);
+  }, [campaignId]);
 
   useEffect(() => {
     let mounted = true;
@@ -187,7 +187,7 @@ export function ChatPanel({
         )}
       </div>
 
-      <AgentRunsHistory projectId={projectId} refreshKey={runsRefreshKey} />
+      <AgentRunsHistory campaignId={campaignId} refreshKey={runsRefreshKey} />
 
       <div className="slim-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {loading ? (

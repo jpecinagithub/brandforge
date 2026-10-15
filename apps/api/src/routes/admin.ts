@@ -4,7 +4,6 @@ import { and, count, desc, eq, gt, ilike, isNull, or } from 'drizzle-orm';
 import {
   agentRuns,
   auditLogs,
-  campaigns,
   projects,
   sessions,
   users,
@@ -25,13 +24,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
 
   app.get(`${prefix}/overview`, guard, async () => {
     const dayAgo = new Date(Date.now() - 86_400_000);
-    const [[u], [pa], [pb], [d], [pr], [c], [r], [e]] = await Promise.all([
+    const [[u], [pa], [pb], [d], [c], [r], [e]] = await Promise.all([
       db.select({ n: count() }).from(users),
       db.select({ n: count() }).from(users).where(eq(users.status, 'active')),
       db.select({ n: count() }).from(users).where(eq(users.status, 'blocked')),
       db.select({ n: count() }).from(users).where(and(eq(users.isDemo, true), gt(users.demoExpiresAt, new Date()))),
       db.select({ n: count() }).from(projects),
-      db.select({ n: count() }).from(campaigns),
       db.select({ n: count() }).from(agentRuns),
       db.select({ n: count() }).from(auditLogs).where(and(eq(auditLogs.action, 'error'), gt(auditLogs.createdAt, dayAgo))),
     ]);
@@ -40,7 +38,6 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       usersActive: pa.n,
       usersBlocked: pb.n,
       demoActive: d.n,
-      projectsTotal: pr.n,
       campaignsTotal: c.n,
       agentRunsTotal: r.n,
       errorsLast24h: e.n,

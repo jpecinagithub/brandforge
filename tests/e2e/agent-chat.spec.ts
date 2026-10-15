@@ -14,7 +14,7 @@
  *    mock that emits the contract's SSE event frames
  *    (`{id, runId, seq, type, payload, createdAt}`), so the spec drives every
  *    UI state the progress card supports;
- *  - everything else (auth cookie, project creation, GET conversation reload,
+ *  - everything else (auth cookie, campaign creation, GET conversation reload,
  *    runs list/detail when explicitly routed) goes through the REAL test API.
  *
  * The honest AI_NOT_CONFIGURED stub path against the real backend is already
@@ -90,7 +90,7 @@ test.beforeEach(async ({ page, request }) => {
 function fakeRun(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
-    projectId: '00000000-0000-0000-0000-000000000000',
+    campaignId: '00000000-0000-0000-0000-000000000000',
     conversationId: null,
     state: 'running',
     input: 'Design a launch campaign',
@@ -156,14 +156,15 @@ async function mockAgenticChat(page: Page, runId: string) {
   });
 }
 
-async function createProjectAndOpenWorkspace(page: Page): Promise<string> {
-  const projectName = `E2E Agent ${Date.now()}`;
+async function createCampaignAndOpenWorkspace(page: Page): Promise<string> {
+  const campaignName = `E2E Agent ${Date.now()}`;
   await page.goto('/app');
   await page.getByRole('button', { name: 'New Campaign' }).first().click();
-  await page.getByLabel('Project name').fill(projectName);
+  await page.getByLabel('Campaign name').fill(campaignName);
+  await page.getByLabel('Main objective').fill('Create a complete launch campaign');
   await page.getByRole('button', { name: 'Create campaign' }).click();
-  await expect(page).toHaveURL(/\/app\/projects\/.+/);
-  return projectName;
+  await expect(page).toHaveURL(/\/app\/campaigns\/.+/);
+  return campaignName;
 }
 
 async function sendChatMessage(page: Page, text: string) {
@@ -184,7 +185,7 @@ test('run streams steps, tools, usage and approval — approve → finished', as
     });
   });
 
-  await createProjectAndOpenWorkspace(page);
+  await createCampaignAndOpenWorkspace(page);
   await sendChatMessage(page, 'Design a launch campaign');
 
   const card = page.getByTestId('agent-run-card');
@@ -263,7 +264,7 @@ test('cancel stops the run', async ({ page }) => {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ run: fakeRun(RUN_ID_2, { state: 'cancelled' }) }) });
   });
 
-  await createProjectAndOpenWorkspace(page);
+  await createCampaignAndOpenWorkspace(page);
   await sendChatMessage(page, 'Design a launch campaign');
 
   const card = page.getByTestId('agent-run-card');
@@ -290,7 +291,7 @@ test('stream error falls back to polling and finishes without user action', asyn
       body: JSON.stringify({ run: fakeRun(RUN_ID, { state: polledState }), steps: [] }),
     });
   });
-  await createProjectAndOpenWorkspace(page);
+  await createCampaignAndOpenWorkspace(page);
 
   // make the NEXT EventSource instance fail on open
   await page.evaluate(() => {
@@ -308,7 +309,7 @@ test('stream error falls back to polling and finishes without user action', asyn
 });
 
 test('an active run is restored when the workspace is reopened', async ({ page }) => {
-  await page.route('**/api/v1/projects/*/agent/runs', async (route) => {
+  await page.route('**/api/v1/campaigns/*/agent/runs', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -324,7 +325,7 @@ test('an active run is restored when the workspace is reopened', async ({ page }
     });
   });
 
-  await createProjectAndOpenWorkspace(page);
+  await createCampaignAndOpenWorkspace(page);
   const card = page.getByTestId('agent-run-card');
   await expect(card).toBeVisible();
   await expect(card.getByText('Running')).toBeVisible();
@@ -336,7 +337,7 @@ test('runs history lists runs and shows step detail (mobile layout)', async ({ p
     { id: 'st-1', stepNo: 1, title: 'Draft campaign concepts', tool: 'generate_marketing_copy', state: 'completed', error: null },
     { id: 'st-2', stepNo: 2, title: 'Review copy', tool: 'review_campaign', state: 'failed', error: 'Tone mismatch' },
   ];
-  await page.route('**/api/v1/projects/*/agent/runs', async (route) => {
+  await page.route('**/api/v1/campaigns/*/agent/runs', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -353,7 +354,7 @@ test('runs history lists runs and shows step detail (mobile layout)', async ({ p
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await createProjectAndOpenWorkspace(page);
+  await createCampaignAndOpenWorkspace(page);
 
   // mobile: switch to the chat column
   await page.getByRole('tab', { name: 'Agent chat' }).click();

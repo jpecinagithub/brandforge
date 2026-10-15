@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { ProtectedRoute, AdminRoute } from '@/components/ProtectedRoute';
@@ -11,9 +11,14 @@ import { ResendVerification } from '@/pages/ResendVerification';
 import { ForgotPassword } from '@/pages/ForgotPassword';
 import { ResetPassword } from '@/pages/ResetPassword';
 import { Dashboard } from '@/pages/Dashboard';
-import { ProjectWorkspace } from '@/pages/ProjectWorkspace';
+import { CampaignWorkspace } from '@/pages/CampaignWorkspace';
 import { Profile } from '@/pages/Profile';
 import { Admin } from '@/pages/Admin';
+
+function LegacyCampaignRedirect() {
+  const { id } = useParams();
+  return <Navigate to={id ? `/app/campaigns/${id}` : '/app'} replace />;
+}
 
 export function App() {
   return (
@@ -33,8 +38,8 @@ export function App() {
             {/* Private */}
             <Route path="/app" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
-              <Route path="projects/:id" element={<ProjectWorkspace />} />
-              <Route path="campaigns/:id" element={<ProjectWorkspace />} />
+              <Route path="campaigns/:id" element={<CampaignWorkspace />} />
+              <Route path="projects/:id" element={<LegacyCampaignRedirect />} />
               <Route path="profile" element={<Profile />} />
               <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
             </Route>

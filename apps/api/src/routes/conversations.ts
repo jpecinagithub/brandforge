@@ -1,7 +1,7 @@
 /**
  * Chat routes.
  *
- * GET  /api/v1/projects/:projectId/conversation → {conversation, messages, agent}
+ * GET  /api/v1/campaigns/:campaignId/conversation → {conversation, messages, agent}
  * POST /api/v1/conversations/:id/messages {content}
  *      → saves the user message. When OpenRouter is configured AND the
  *        workspace quota allows it, starts an agent run and returns
@@ -9,7 +9,7 @@
  *        conversation on completion. Otherwise uses a safe persisted fallback
  *        (no model is called; nothing is hallucinated).
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { asc, eq } from 'drizzle-orm';
 import { agentRuns, conversations, messages, type Db, type Message } from '@brandforge/database';
 import { SendMessageInputSchema } from '@brandforge/shared';
@@ -72,8 +72,9 @@ async function getOrCreateConversation(db: Db, projectId: string): Promise<strin
 export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   const db: Db = getDb();
 
-  app.get('/api/v1/projects/:projectId/conversation', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { projectId } = request.params as { projectId: string };
+  const getConversation = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = request.params as { projectId?: string; campaignId?: string };
+    const projectId = params.campaignId ?? params.projectId ?? '';
     const p = await projectGuard(db, request, reply, projectId, 'viewer');
     if (!p) return;
     const conversationId = await getOrCreateConversation(db, projectId);
@@ -84,7 +85,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(asc(messages.createdAt));
     const agent = await agentAvailability(db, p.workspaceId);
     return { conversation: { id: conversationId }, messages: msgs.map(toMessageApi), agent };
-  });
+  };
+  app.get('/api/v1/campaigns/:campaignId/conversation', { preHandler: [app.authenticate] }, getConversation);
+  app.get('/api/v1/projects/:projectId/conversation', { preHandler: [app.authenticate] }, getConversation);
 
   app.post('/api/v1/conversations/:id/messages', { preHandler: [app.authenticate] }, async (request, reply) => {
     const req = request as Authed;

@@ -1,5 +1,5 @@
-/** Brand kit routes: GET/PUT /api/v1/projects/:projectId/brand-kit (upsert) */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+/** Brand kit routes scoped to the canonical campaign id (upsert). */
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { brandKits, type BrandKit, type Db } from '@brandforge/database';
 import { UpsertBrandKitInputSchema } from '@brandforge/shared';
@@ -13,7 +13,7 @@ type Authed = FastifyRequest & { user: NonNullable<FastifyRequest['user']> };
 export function toBrandKitApi(k: BrandKit) {
   return {
     id: k.id,
-    projectId: k.projectId,
+    campaignId: k.projectId,
     brandName: k.brandName,
     tagline: k.tagline,
     description: k.description,
@@ -28,18 +28,22 @@ export function toBrandKitApi(k: BrandKit) {
 export async function brandKitRoutes(app: FastifyInstance): Promise<void> {
   const db: Db = getDb();
 
-  app.get('/api/v1/projects/:projectId/brand-kit', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { projectId } = request.params as { projectId: string };
+  const getBrandKit = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = request.params as { projectId?: string; campaignId?: string };
+    const projectId = params.campaignId ?? params.projectId ?? '';
     const p = await projectGuard(db, request, reply, projectId, 'viewer');
     if (!p) return;
     const [kit] = await db.select().from(brandKits).where(eq(brandKits.projectId, projectId)).limit(1);
     if (!kit) return Errors.notFound(reply, 'Brand kit not found');
     return { brandKit: toBrandKitApi(kit) };
-  });
+  };
+  app.get('/api/v1/campaigns/:campaignId/brand-kit', { preHandler: [app.authenticate] }, getBrandKit);
+  app.get('/api/v1/projects/:projectId/brand-kit', { preHandler: [app.authenticate] }, getBrandKit);
 
-  app.put('/api/v1/projects/:projectId/brand-kit', { preHandler: [app.authenticate] }, async (request, reply) => {
+  const putBrandKit = async (request: FastifyRequest, reply: FastifyReply) => {
     const req = request as Authed;
-    const { projectId } = request.params as { projectId: string };
+    const params = request.params as { projectId?: string; campaignId?: string };
+    const projectId = params.campaignId ?? params.projectId ?? '';
     const p = await projectGuard(db, request, reply, projectId, 'editor');
     if (!p) return;
     const parsed = UpsertBrandKitInputSchema.safeParse(request.body);
@@ -59,5 +63,7 @@ export async function brandKitRoutes(app: FastifyInstance): Promise<void> {
     const { ip, userAgent } = requestMeta(request);
     await audit(db, { userId: req.user.rawId, action: 'brandkit.upsert', ip, userAgent, meta: { projectId } });
     return { brandKit: toBrandKitApi(kit) };
-  });
+  };
+  app.put('/api/v1/campaigns/:campaignId/brand-kit', { preHandler: [app.authenticate] }, putBrandKit);
+  app.put('/api/v1/projects/:projectId/brand-kit', { preHandler: [app.authenticate] }, putBrandKit);
 }

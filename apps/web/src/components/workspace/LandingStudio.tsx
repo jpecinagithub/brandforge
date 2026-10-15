@@ -20,11 +20,11 @@ const deviceIcons = {
 };
 
 export function LandingStudio({
-  projectId,
+  campaignId,
   onOpenChat,
   refreshKey,
 }: {
-  projectId: string;
+  campaignId: string;
   onOpenChat: () => void;
   refreshKey: number;
 }) {
@@ -48,7 +48,7 @@ export function LandingStudio({
     setError(false);
     try {
       const response = await get<{ landingPages: LandingPage[] }>(
-        `/api/v1/projects/${projectId}/landing-pages`,
+        `/api/v1/campaigns/${campaignId}/landing-pages`,
       );
       const nextPages = response.landingPages ?? [];
       setPages(nextPages);
@@ -64,7 +64,7 @@ export function LandingStudio({
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [campaignId]);
 
   useEffect(() => {
     void loadPages(refreshKey > 0);

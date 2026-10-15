@@ -1,8 +1,8 @@
 /**
  * Agent run routes.
  *
- * POST   /api/v1/projects/:projectId/agent/runs        start a run (editor, 20/h per user)
- * GET    /api/v1/projects/:projectId/agent/runs        list runs (viewer, paginated)
+ * POST   /api/v1/campaigns/:campaignId/agent/runs      start a run (editor, 20/h per user)
+ * GET    /api/v1/campaigns/:campaignId/agent/runs      list runs (viewer, paginated)
  * GET    /api/v1/agent/runs/:runId                     run detail + steps (viewer)
  * POST   /api/v1/agent/runs/:runId/cancel              (editor)
  * POST   /api/v1/agent/runs/:runId/resume              (editor)
@@ -12,7 +12,7 @@
  * HTTP handlers only mutate rows / delegate to the orchestrator — they never
  * run the agent loop (ADR-0006). The worker executes claimed runs.
  */
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { count, desc, eq, gt, sql } from 'drizzle-orm';
 import {
   agentEvents,
@@ -61,7 +61,7 @@ export function toAgentRunDto(r: typeof agentRuns.$inferSelect): AgentRun {
   const plan = AgentPlanSchema.safeParse(r.plan);
   return {
     id: r.id,
-    projectId: r.projectId,
+    campaignId: r.projectId,
     conversationId: r.conversationId,
     state: (state.success ? state.data : r.status) as RunState,
     input: r.input,
@@ -144,15 +144,13 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
   const db: Db = getDb();
 
   // ---- start run
-  app.post(
-    '/api/v1/projects/:projectId/agent/runs',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
+  const startRun = async (request: FastifyRequest, reply: FastifyReply) => {
       const req = request as Authed;
       if (!userRateLimitOk(req.user.rawId, 'agent.start', 20, 3_600_000)) {
         return sendError(reply, 429, 'RATE_LIMITED', 'Too many agent runs started (20/hour)');
       }
-      const { projectId } = request.params as { projectId: string };
+      const params = request.params as { projectId?: string; campaignId?: string };
+      const projectId = params.campaignId ?? params.projectId ?? '';
       const p = await projectGuard(db, request, reply, projectId, 'editor');
       if (!p) return;
       const parsed = StartRunInputSchema.safeParse(request.body);
@@ -208,15 +206,14 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       });
       const [row] = await db.select().from(agentRuns).where(eq(agentRuns.id, started.id)).limit(1);
       return reply.code(202).send({ run: toAgentRunDto(row) });
-    },
-  );
+  };
+  app.post('/api/v1/campaigns/:campaignId/agent/runs', { preHandler: [app.authenticate] }, startRun);
+  app.post('/api/v1/projects/:projectId/agent/runs', { preHandler: [app.authenticate] }, startRun);
 
   // ---- list runs
-  app.get(
-    '/api/v1/projects/:projectId/agent/runs',
-    { preHandler: [app.authenticate] },
-    async (request, reply) => {
-      const { projectId } = request.params as { projectId: string };
+  const listRuns = async (request: FastifyRequest, reply: FastifyReply) => {
+      const params = request.params as { projectId?: string; campaignId?: string };
+      const projectId = params.campaignId ?? params.projectId ?? '';
       const p = await projectGuard(db, request, reply, projectId, 'viewer');
       if (!p) return;
       const pg = PaginationQuerySchema.safeParse(request.query);
@@ -238,8 +235,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         page: pg.data.page,
         limit: pg.data.limit,
       };
-    },
-  );
+  };
+  app.get('/api/v1/campaigns/:campaignId/agent/runs', { preHandler: [app.authenticate] }, listRuns);
+  app.get('/api/v1/projects/:projectId/agent/runs', { preHandler: [app.authenticate] }, listRuns);
 
   // ---- run detail + steps
   app.get('/api/v1/agent/runs/:runId', { preHandler: [app.authenticate] }, async (request, reply) => {

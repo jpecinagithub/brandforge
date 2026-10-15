@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { asc, eq } from 'drizzle-orm';
 import { brandKits, landingPages, type Db } from '@brandforge/database';
 import { getDb } from '../db.js';
@@ -124,8 +124,9 @@ export function renderLandingPreview(input: {
 export async function landingPageRoutes(app: FastifyInstance): Promise<void> {
   const db: Db = getDb();
 
-  app.get('/api/v1/projects/:projectId/landing-pages', { preHandler: [app.authenticate] }, async (request, reply) => {
-    const { projectId } = request.params as { projectId: string };
+  const listLandingPages = async (request: FastifyRequest, reply: FastifyReply) => {
+    const params = request.params as { projectId?: string; campaignId?: string };
+    const projectId = params.campaignId ?? params.projectId ?? '';
     const project = await projectGuard(db, request, reply, projectId, 'viewer');
     if (!project) return;
     const rows = await db
@@ -133,8 +134,10 @@ export async function landingPageRoutes(app: FastifyInstance): Promise<void> {
       .from(landingPages)
       .where(eq(landingPages.projectId, projectId))
       .orderBy(asc(landingPages.createdAt));
-    return { landingPages: rows };
-  });
+    return { landingPages: rows.map(({ projectId: campaignId, ...page }) => ({ ...page, campaignId })) };
+  };
+  app.get('/api/v1/campaigns/:campaignId/landing-pages', { preHandler: [app.authenticate] }, listLandingPages);
+  app.get('/api/v1/projects/:projectId/landing-pages', { preHandler: [app.authenticate] }, listLandingPages);
 
   app.get('/api/v1/landing-pages/:landingPageId/preview', { preHandler: [app.authenticate] }, async (request, reply) => {
     const { landingPageId } = request.params as { landingPageId: string };
