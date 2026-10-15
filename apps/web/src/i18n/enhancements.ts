@@ -7,6 +7,10 @@ export const enEnhancements = {
     noFavoritesDesc: 'Star a campaign to keep it close at hand here.',
     statsAssets: 'Reference assets',
     statsFavorites: 'Favorites',
+    allCampaigns: 'All campaigns',
+    deleteCampaign: 'Delete {{name}}',
+    deleteCampaignConfirm: 'Delete “{{name}}” and all its assets, generated pieces and conversation? This cannot be undone.',
+    deleteCampaignError: 'The campaign could not be deleted. Please try again.',
   },
   landing: {
     feature3Desc: 'Keep the brief, audience, deliverables, assets and history of each campaign together.',
@@ -81,6 +85,10 @@ export const esEnhancements = {
     noFavoritesDesc: 'Marca una campaña con la estrella para tenerla siempre a mano aquí.',
     statsAssets: 'Assets de referencia',
     statsFavorites: 'Favoritas',
+    allCampaigns: 'Todas las campañas',
+    deleteCampaign: 'Eliminar {{name}}',
+    deleteCampaignConfirm: '¿Eliminar “{{name}}” junto con sus assets, piezas generadas y conversación? No se puede deshacer.',
+    deleteCampaignError: 'No se ha podido eliminar la campaña. Inténtalo de nuevo.',
   },
   landing: {
     feature3Desc: 'Reúne el briefing, la audiencia, los entregables, los assets y el historial de cada campaña.',

@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, CardContent, CardIcon, EmptyState, Spinner } from '@brandforge/ui';
-import { Image as ImageIcon, Megaphone, Plus, Star } from 'lucide-react';
+import { Image as ImageIcon, Megaphone, Plus, Star, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { get, patch } from '@/lib/api';
+import { del, get, patch } from '@/lib/api';
 import type { Campaign, Project, Workspace } from '@/lib/types';
 import { NewCampaignModal } from '@/components/NewCampaignModal';
 
@@ -58,7 +58,6 @@ export function Dashboard() {
     void load();
   }, [load]);
 
-  const recent = useMemo(() => campaigns.slice(0, 5), [campaigns]);
   const favorites = useMemo(() => campaigns.filter((campaign) => campaign.isFavorite), [campaigns]);
   const assetCount = useMemo(() => projects.reduce((total, project) => total + (project.assetCount ?? 0), 0), [projects]);
   const toggleCampaignFavorite = async (campaign: RecentCampaign) => {
@@ -69,6 +68,17 @@ export function Dashboard() {
       setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, ...response.campaign } : item));
     } catch {
       setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: campaign.isFavorite } : item));
+    }
+  };
+
+  const deleteCampaign = async (campaign: RecentCampaign) => {
+    if (!window.confirm(t('dashboard.deleteCampaignConfirm', { name: campaign.name }))) return;
+    try {
+      await del(`/api/v1/projects/${campaign.projectId}`);
+      setCampaigns((current) => current.filter((item) => item.projectId !== campaign.projectId));
+      setProjects((current) => current.filter((project) => project.id !== campaign.projectId));
+    } catch {
+      window.alert(t('dashboard.deleteCampaignError'));
     }
   };
 
@@ -118,13 +128,13 @@ export function Dashboard() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent campaigns */}
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">{t('dashboard.recentCampaigns')}</h2>
+          <h2 className="mb-4 text-lg font-semibold text-slate-900 dark:text-white">{t('dashboard.allCampaigns')}</h2>
           <Card>
-            {recent.length === 0 ? (
+            {campaigns.length === 0 ? (
               <EmptyState icon={<Megaphone size={26} />} title={t('dashboard.noCampaigns')} description={t('dashboard.noCampaignsDesc')} action={<Button size="sm" icon={<Plus size={15} />} onClick={() => setModalOpen(true)}>{t('dashboard.newCampaign')}</Button>} />
             ) : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {recent.map((c) => (
+              <ul className="slim-scroll max-h-[30rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                {campaigns.map((c) => (
                   <li key={c.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <Link to={`/app/campaigns/${c.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="min-w-0">
@@ -141,6 +151,14 @@ export function Dashboard() {
                       className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-amber-400/10"
                     >
                       <Star size={17} className={c.isFavorite ? 'fill-amber-400 text-amber-400' : ''} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void deleteCampaign(c)}
+                      aria-label={t('dashboard.deleteCampaign', { name: c.name })}
+                      className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                    >
+                      <Trash2 size={17} />
                     </button>
                   </li>
                 ))}
