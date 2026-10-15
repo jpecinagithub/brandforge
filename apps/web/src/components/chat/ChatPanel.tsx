@@ -49,7 +49,15 @@ interface ChatDraftRequest {
   text: string;
 }
 
-export function ChatPanel({ projectId, draftRequest }: { projectId: string; draftRequest?: ChatDraftRequest | null }) {
+export function ChatPanel({
+  projectId,
+  draftRequest,
+  onResultsChanged,
+}: {
+  projectId: string;
+  draftRequest?: ChatDraftRequest | null;
+  onResultsChanged?: () => void;
+}) {
   const { t, i18n } = useTranslation();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -115,11 +123,12 @@ export function ChatPanel({ projectId, draftRequest }: { projectId: string; draf
       // The backend persisted the final assistant message — reload the thread
       // and refresh the history list. The card itself stays, marked done.
       setRunsRefreshKey((k) => k + 1);
+      onResultsChanged?.();
       fetchMessages().catch(() => {
         /* keep the existing thread on reload failure */
       });
     },
-    [fetchMessages],
+    [fetchMessages, onResultsChanged],
   );
 
   const send = async () => {

@@ -27,7 +27,7 @@ import { LandingStudio } from '@/components/workspace/LandingStudio';
 
 /* ------------------------------ Campaigns tab ------------------------------ */
 
-function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCountChange: () => void }) {
+function CampaignsTab({ projectId, onCountChange, refreshKey }: { projectId: string; onCountChange: () => void; refreshKey: number }) {
   const { t } = useTranslation();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +49,7 @@ function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCount
     }
   }, [projectId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, refreshKey]);
 
   const create = async () => {
     if (name.trim().length < 2 || creating) return;
@@ -150,7 +150,7 @@ function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCount
 
 const emptyBrandKit: BrandKit = { brandName: '', tagline: '', description: '', colors: [], fonts: [], tone: '', audience: '' };
 
-function BrandKitTab({ projectId }: { projectId: string }) {
+function BrandKitTab({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
   const { t } = useTranslation();
   const [kit, setKit] = useState<BrandKit>(emptyBrandKit);
   const [colorsText, setColorsText] = useState('');
@@ -174,7 +174,7 @@ function BrandKitTab({ projectId }: { projectId: string }) {
         setKit(emptyBrandKit);
       })
       .finally(() => setLoading(false));
-  }, [projectId]);
+  }, [projectId, refreshKey]);
 
   const save = async () => {
     setSaving(true);
@@ -245,7 +245,7 @@ function BrandKitTab({ projectId }: { projectId: string }) {
 
 /* ------------------------------ Assets tab ------------------------------ */
 
-function AssetsTab({ projectId }: { projectId: string }) {
+function AssetsTab({ projectId, refreshKey }: { projectId: string; refreshKey: number }) {
   const { t } = useTranslation();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
@@ -263,7 +263,7 @@ function AssetsTab({ projectId }: { projectId: string }) {
     }
   }, [projectId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, refreshKey]);
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -339,9 +339,10 @@ export function ProjectWorkspace() {
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [resultsRefreshKey, setResultsRefreshKey] = useState(0);
 
-  const loadProject = useCallback(async () => {
-    setLoading(true);
+  const loadProject = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const res = await get<{ project: Project }>(`/api/v1/projects/${id}`);
       setProject(res.project);
@@ -350,9 +351,9 @@ export function ProjectWorkspace() {
       const sib = await get<{ projects: Project[] }>(`/api/v1/projects?workspaceId=${res.project.workspaceId}`);
       setSiblings(sib.projects ?? []);
     } catch {
-      setProject(null);
+      if (showLoading) setProject(null);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [id]);
 
@@ -398,6 +399,11 @@ export function ProjectWorkspace() {
     setChatDraftRequest({ id: Date.now(), text: t('workspace.landingAgentPrompt') });
     setMobileView('chat');
   };
+
+  const refreshAgentResults = useCallback(() => {
+    setResultsRefreshKey((key) => key + 1);
+    void loadProject(false);
+  }, [loadProject]);
 
   if (loading) {
     return <div className="flex h-64 items-center justify-center text-violet-600"><Spinner size="lg" /></div>;
@@ -517,15 +523,21 @@ export function ProjectWorkspace() {
             </CardContent></Card>
           </div>
         )}
-        {tab === 'campaigns' && <CampaignsTab projectId={project.id} onCountChange={loadProject} />}
-        {tab === 'brandkit' && <BrandKitTab projectId={project.id} />}
-        {tab === 'assets' && <AssetsTab projectId={project.id} />}
-        {tab === 'landing' && <LandingStudio projectId={project.id} onOpenChat={prepareLandingRequest} />}
+        {tab === 'campaigns' && <CampaignsTab projectId={project.id} onCountChange={loadProject} refreshKey={resultsRefreshKey} />}
+        {tab === 'brandkit' && <BrandKitTab projectId={project.id} refreshKey={resultsRefreshKey} />}
+        {tab === 'assets' && <AssetsTab projectId={project.id} refreshKey={resultsRefreshKey} />}
+        {tab === 'landing' && <LandingStudio projectId={project.id} onOpenChat={prepareLandingRequest} refreshKey={resultsRefreshKey} />}
       </div>
     </div>
   );
 
-  const chat = <ChatPanel projectId={project.id} draftRequest={chatDraftRequest} />;
+  const chat = (
+    <ChatPanel
+      projectId={project.id}
+      draftRequest={chatDraftRequest}
+      onResultsChanged={refreshAgentResults}
+    />
+  );
 
   const mobileTabs: { key: MobileView; label: string }[] = [
     { key: 'sidebar', label: t('workspace.mobileSidebar') },

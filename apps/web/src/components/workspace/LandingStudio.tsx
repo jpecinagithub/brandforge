@@ -19,7 +19,15 @@ const deviceIcons = {
   mobile: Smartphone,
 };
 
-export function LandingStudio({ projectId, onOpenChat }: { projectId: string; onOpenChat: () => void }) {
+export function LandingStudio({
+  projectId,
+  onOpenChat,
+  refreshKey,
+}: {
+  projectId: string;
+  onOpenChat: () => void;
+  refreshKey: number;
+}) {
   const { t } = useTranslation();
   const [pages, setPages] = useState<LandingPage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -29,14 +37,14 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
 
   const selected = useMemo(
     () => pages.find((page) => page.id === selectedId) ?? null,
     [pages, selectedId],
   );
 
-  const loadPages = useCallback(async () => {
+  const loadPages = useCallback(async (preferLatest = false) => {
     setLoading(true);
     setError(false);
     try {
@@ -46,7 +54,7 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
       const nextPages = response.landingPages ?? [];
       setPages(nextPages);
       setSelectedId((current) =>
-        current && nextPages.some((page) => page.id === current)
+        !preferLatest && current && nextPages.some((page) => page.id === current)
           ? current
           : nextPages.at(-1)?.id ?? null,
       );
@@ -60,8 +68,8 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
   }, [projectId]);
 
   useEffect(() => {
-    void loadPages();
-  }, [loadPages]);
+    void loadPages(refreshKey > 0);
+  }, [loadPages, refreshKey]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -90,7 +98,7 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
         if (!controller.signal.aborted) setPreviewLoading(false);
       });
     return () => controller.abort();
-  }, [selectedId, refreshKey]);
+  }, [selectedId, previewRefreshKey]);
 
   useEffect(() => {
     if (!html) {
@@ -148,7 +156,7 @@ export function LandingStudio({ projectId, onOpenChat }: { projectId: string; on
             size="sm"
             variant="secondary"
             icon={<RefreshCw size={15} />}
-            onClick={() => setRefreshKey((key) => key + 1)}
+            onClick={() => setPreviewRefreshKey((key) => key + 1)}
           >
             {t('workspace.landingRefresh')}
           </Button>
