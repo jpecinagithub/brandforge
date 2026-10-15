@@ -47,7 +47,7 @@ export const enEnhancements = {
     landingEmpty: 'No landing page has been created yet.',
     landingEmptyDescription: 'Ask the agent to create one from your campaign brief and it will appear here.',
     landingAskAgent: 'Prepare in chat',
-    landingAgentPrompt: 'Create a landing page for this project using the current campaign brief and brand kit. Include a headline, supporting copy, key sections and a clear call to action.',
+    landingAgentPrompt: 'Create a landing page for this campaign using its brief, audience and brand kit. Include a headline, supporting copy, key sections and a clear call to action.',
     landingDesktop: 'Desktop',
     landingTablet: 'Tablet',
     landingMobile: 'Mobile',
@@ -69,7 +69,6 @@ export const enEnhancements = {
     deleteCampaignConfirmAll: 'Delete this campaign, its assets, generated pieces and conversation? This cannot be undone.',
     mobileSidebar: 'Campaigns',
     mobileViews: 'Campaign views',
-    landingAgentPrompt: 'Create a landing page for this campaign using its brief, audience and brand kit. Include a headline, supporting copy, key sections and a clear call to action.',
   },
 } as const;
 
@@ -122,7 +121,7 @@ export const esEnhancements = {
     landingEmpty: 'Todavía no se ha creado ninguna landing.',
     landingEmptyDescription: 'Pídele al agente que la cree desde el briefing de campaña y aparecerá aquí.',
     landingAskAgent: 'Preparar en el chat',
-    landingAgentPrompt: 'Crea una landing page para este proyecto a partir del briefing de campaña y el brand kit actuales. Incluye un titular, un texto de apoyo, las secciones clave y una llamada a la acción clara.',
+    landingAgentPrompt: 'Crea una landing page para esta campaña a partir de su briefing, audiencia y brand kit. Incluye un titular, un texto de apoyo, las secciones clave y una llamada a la acción clara.',
     landingDesktop: 'Escritorio',
     landingTablet: 'Tablet',
     landingMobile: 'Móvil',
@@ -144,6 +143,5 @@ export const esEnhancements = {
     deleteCampaignConfirmAll: '¿Eliminar esta campaña, sus assets, las piezas generadas y la conversación? No se puede deshacer.',
     mobileSidebar: 'Campañas',
     mobileViews: 'Vistas de campaña',
-    landingAgentPrompt: 'Crea una landing page para esta campaña a partir de su briefing, audiencia y brand kit. Incluye un titular, un texto de apoyo, las secciones clave y una llamada a la acción clara.',
   },
 } as const;
