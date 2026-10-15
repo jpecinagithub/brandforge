@@ -22,6 +22,7 @@ import type { AgentAvailability, Conversation, ConversationMessage } from '@/lib
 import type { AgentRun } from '@brandforge/shared';
 import { AgentRunCard } from './AgentRunCard';
 import { AgentRunsHistory } from './AgentRunsHistory';
+import { isRunActive } from './agentUi';
 
 const AI_NOT_CONFIGURED = 'AI_NOT_CONFIGURED';
 const AI_QUOTA_UNAVAILABLE = 'AI_QUOTA_UNAVAILABLE';
@@ -70,12 +71,34 @@ export function ChatPanel({ projectId, draftRequest }: { projectId: string; draf
     setAgentStatus(res.agent.available ? 'available' : (res.agent.reason ?? 'not_configured'));
   }, [projectId]);
 
+  const fetchActiveRuns = useCallback(async () => {
+    const res = await get<{ runs: AgentRun[] }>(`/api/v1/projects/${projectId}/agent/runs`);
+    const activeRuns = (res.runs ?? []).filter((run) => isRunActive(run.state));
+    setLiveRuns((current) => {
+      const activeIds = new Set(activeRuns.map((run) => run.id));
+      const finishedFromThisView = current.filter((run) => !isRunActive(run.state) && !activeIds.has(run.id));
+      return [...finishedFromThisView, ...activeRuns];
+    });
+  }, [projectId]);
+
   useEffect(() => {
+    let mounted = true;
     setLoading(true);
-    fetchMessages()
-      .catch(() => setMessages([]))
-      .finally(() => setLoading(false));
-  }, [fetchMessages]);
+    setLiveRuns([]);
+    void Promise.allSettled([
+      fetchMessages().catch(() => {
+        setConversation(null);
+        setMessages([]);
+        setAgentStatus('unknown');
+      }),
+      fetchActiveRuns().catch(() => setLiveRuns([])),
+    ]).then(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [fetchActiveRuns, fetchMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -112,7 +135,7 @@ export function ChatPanel({ projectId, draftRequest }: { projectId: string; draf
       setMessages((m) => [...m, res.message]);
       if (res.run) {
         setAgentStatus('available');
-        setLiveRuns((r) => [...r, res.run as AgentRun]);
+        setLiveRuns((runs) => runs.some((run) => run.id === res.run?.id) ? runs : [...runs, res.run as AgentRun]);
       } else if (res.reply) {
         const notice = res.reply.notice;
         if (notice === AI_NOT_CONFIGURED) setAgentStatus('not_configured');

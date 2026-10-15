@@ -81,7 +81,7 @@ npm run test:e2e
 | `tests/e2e/demo.spec.ts` | "Try Demo — No registration required" → `/app`, demo banner, Café Aroma project, open workspace, chat shows the AI_NOT_CONFIGURED notice; sending a message gets the honest stub reply |
 | `tests/e2e/auth.spec.ts` | register → "Check your email" → verify via maildir token → login → New Campaign modal creates a project → logout → login again |
 | `tests/e2e/projects.spec.ts` | (demo session cookie) create project → favorite → create campaign → edit brand kit name → upload avatar PNG → delete project |
-| `tests/e2e/agent-chat.spec.ts` | Phase-3 agentic chat UI: POST /messages returning a canned `run` (routed), scriptable `EventSource` mock emitting contract-shaped SSE frames — progress card streams steps/tools/usage, approval gate (approve with raised budget asserts the request body), cancel, stream-error → manual retry (no infinite reconnect), runs history list + step-detail modal (mobile viewport). Real backend only for auth/project/conversation. See the spec header for the full strategy rationale. |
+| `tests/e2e/agent-chat.spec.ts` | Phase-3 agentic chat UI: POST /messages returning a canned `run` (routed), scriptable `EventSource` mock emitting contract-shaped SSE frames — progress card streams steps/tools/usage, approval gate, cancel, stream-error → automatic API polling, active-run restoration after reopen, runs history list + step-detail modal (mobile viewport). Real backend only for auth/project/conversation. See the spec header for the full strategy rationale. |
 
 ### Agent-chat E2E strategy (approach b)
 

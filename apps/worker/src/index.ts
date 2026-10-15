@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
 import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { agentRuns, createClient, createDb, type Db } from '@brandforge/database';
+import { closeRunningAgentSteps } from '@brandforge/agent-core';
 import { buildOrchestrator, readAgentConfig, reconcileRunLedger } from '@brandforge/agent-server';
 
 const WORKER_ID = `worker-${hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -82,7 +83,7 @@ async function requeueStale(): Promise<void> {
       status: 'failed',
       claimedBy: null,
       heartbeatAt: null,
-      error: 'Worker lost heartbeat; max attempts exhausted',
+      error: 'The run stopped safely and all created results have been preserved.',
       finishedAt: new Date(),
       updatedAt: new Date(),
     })
@@ -90,6 +91,14 @@ async function requeueStale(): Promise<void> {
     .returning({ id: agentRuns.id });
 
   const revived = revivedPlanning.length + revivedRunning.length;
+  for (const run of dead) {
+    await closeRunningAgentSteps(
+      db,
+      run.id,
+      'failed',
+      'This step stopped safely. Completed results have been preserved.',
+    );
+  }
   if (revived > 0 || dead.length > 0) {
     console.log(`[worker] requeue: ${revived} released for re-claim, ${dead.length} marked failed`);
   }

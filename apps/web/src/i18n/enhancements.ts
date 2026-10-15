@@ -4,7 +4,7 @@ export const enEnhancements = {
   },
   agent: {
     retry: 'Refresh status',
-    retryNote: 'Live updates paused, but the agent may still be working. Refresh the status whenever you want.',
+    retryNote: 'Keeping the progress in sync automatically while the agent continues working.',
   },
   workspace: {
     agentAvailable: 'Agent ready',
@@ -35,7 +35,7 @@ export const esEnhancements = {
   },
   agent: {
     retry: 'Actualizar estado',
-    retryNote: 'Las actualizaciones en directo se han pausado, pero el agente puede seguir trabajando. Actualiza el estado cuando quieras.',
+    retryNote: 'Seguimos sincronizando el progreso automáticamente mientras el agente continúa trabajando.',
   },
   workspace: {
     agentAvailable: 'Agente preparado',

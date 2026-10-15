@@ -270,10 +270,19 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
       projectId: 'p1',
       input: 'Launch',
     });
+    db.__table('agent_steps').push({
+      id: 'open-step',
+      runId,
+      stepNo: 99,
+      kind: 'review_campaign',
+      title: 'Interrupted review',
+      status: 'running',
+    });
     const cancelled = await orch.cancelRun(runId);
     expect(cancelled.state).toBe('cancelled');
     await orch.executeRun(runId);
     expect(db.__table('agent_runs')[0].status).toBe('cancelled');
+    expect(db.__table('agent_steps')[0].status).toBe('cancelled');
     expect(db.__table('campaigns')).toHaveLength(0);
   });
 
@@ -338,16 +347,27 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
       conversationId: 'c1',
       input: 'Do it',
     });
+    db.__table('agent_steps').push({
+      id: 'orphan-running-step',
+      runId,
+      stepNo: 99,
+      kind: 'review_campaign',
+      title: 'Review still marked running',
+      status: 'running',
+    });
 
     await orch.executeRun(runId);
     const runs = db.__table('agent_runs');
     expect(runs[0].status).toBe('failed');
     expect(runs[0].error).not.toContain('Invalid arguments');
     expect(runs[0].error).toContain('stopped safely');
-    const [step] = db.__table('agent_steps');
+    const step = db.__table('agent_steps').find((candidate) => candidate.stepNo === 0)!;
+    const orphanStep = db.__table('agent_steps').find((candidate) => candidate.stepNo === 99)!;
     expect(step.status).toBe('failed');
     expect(step.error).not.toContain('Invalid arguments');
     expect((step.detail as { internalError: string }).internalError).toContain('Invalid arguments');
+    expect(orphanStep.status).toBe('failed');
+    expect(orphanStep.error).not.toContain('Invalid arguments');
     expect(conversation.messages).toHaveLength(1);
     expect(conversation.messages[0].content).toContain('everything created has been preserved');
 

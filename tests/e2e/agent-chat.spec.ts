@@ -1,6 +1,6 @@
 /**
- * E2E: agent chat — run progress card, approval flow, cancel, stream retry,
- * and the runs history.
+ * E2E: agent chat — run progress card, approval flow, cancel, durable stream
+ * fallback, active-run restoration, and the runs history.
  *
  * TEST STRATEGY (documented choice — approach (b)):
  *
@@ -21,6 +21,7 @@
  * covered by tests/e2e/demo.spec.ts; this spec covers the agentic path.
  */
 import { test, expect, type Page } from '@playwright/test';
+import type { AgentRun } from '@brandforge/shared';
 
 const API = 'http://localhost:3014';
 const RUN_ID = '11111111-2222-3333-4444-555555555555';
@@ -278,8 +279,17 @@ test('cancel stops the run', async ({ page }) => {
   await expect(card.getByText('Cancelled')).toBeVisible();
 });
 
-test('stream error shows a retry note and recovers without infinite reconnect', async ({ page }) => {
+test('stream error falls back to polling and finishes without user action', async ({ page }) => {
   await mockAgenticChat(page, RUN_ID);
+  let polledState: AgentRun['state'] = 'running';
+  await page.route('**/api/v1/agent/runs/*', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ run: fakeRun(RUN_ID, { state: polledState }), steps: [] }),
+    });
+  });
   await createProjectAndOpenWorkspace(page);
 
   // make the NEXT EventSource instance fail on open
@@ -290,18 +300,34 @@ test('stream error shows a retry note and recovers without infinite reconnect', 
 
   const card = page.getByTestId('agent-run-card');
   await expect(card).toBeVisible();
-  await expect(card.getByText('Live updates disconnected.')).toBeVisible();
-  const retry = card.getByRole('button', { name: 'Retry' });
-  await expect(retry).toBeVisible();
+  await expect(card.getByText('Keeping the progress in sync automatically')).toBeVisible();
 
-  // manual retry re-opens the stream; a finished frame marks the card done
-  await retry.click();
-  // the click resolves when the input is dispatched, not when React's handler
-  // runs — wait for the retried EventSource instance before emitting
-  await page.waitForFunction(() => (window as unknown as { __mockES: { instances: unknown[] } }).__mockES.instances.length >= 2);
-  await emitAgentEvent(page, RUN_ID, 11, 'run.finished', { state: 'completed', summary: 'Recovered.' });
-  await expect(card.getByText('Completed')).toBeVisible();
-  await expect(card.getByText('Live updates disconnected.')).toHaveCount(0);
+  polledState = 'completed';
+  await expect(card.getByText('Completed')).toBeVisible({ timeout: 7000 });
+  await expect(card.getByText('Keeping the progress in sync automatically')).toHaveCount(0);
+});
+
+test('an active run is restored when the workspace is reopened', async ({ page }) => {
+  await page.route('**/api/v1/projects/*/agent/runs', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ runs: [fakeRun(RUN_ID)] }),
+    });
+  });
+  await page.route('**/api/v1/agent/runs/*', async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ run: fakeRun(RUN_ID), steps: [] }),
+    });
+  });
+
+  await createProjectAndOpenWorkspace(page);
+  const card = page.getByTestId('agent-run-card');
+  await expect(card).toBeVisible();
+  await expect(card.getByText('Running')).toBeVisible();
 });
 
 test('runs history lists runs and shows step detail (mobile layout)', async ({ page }) => {

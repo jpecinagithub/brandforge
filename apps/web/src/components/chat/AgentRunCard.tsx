@@ -12,10 +12,10 @@
  * step.completed, step.failed, tool.started, tool.completed,
  * run.waiting_approval, usage, run.finished.
  *
- * Stream errors close the EventSource deliberately (no infinite browser
- * retry) and surface a manual retry. On run.finished the card stays visible
- * in the "done" state and the parent reloads the thread (the backend already
- * wrote the final assistant message).
+ * Stream errors close the EventSource deliberately and fall back to polling
+ * the persisted run state. On run.finished the card stays visible in the
+ * "done" state and the parent reloads the thread (the backend already wrote
+ * the final assistant message).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +25,7 @@ import { apiUrl, get, post } from '@/lib/api';
 import type { AgentRun, AgentStep, RunState } from '@brandforge/shared';
 import { isKnownRunState, isRunActive, runStateLabelKey, runStateTone } from './agentUi';
 
-type StepState = 'pending' | 'running' | 'completed' | 'failed';
+type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 interface StepView {
   key: string;
@@ -57,7 +57,20 @@ function num(v: unknown): number | undefined {
 }
 
 function stepStateOf(s: string): StepState {
-  return s === 'completed' ? 'completed' : s === 'failed' ? 'failed' : s === 'running' ? 'running' : 'pending';
+  return s === 'completed'
+    ? 'completed'
+    : s === 'failed'
+      ? 'failed'
+      : s === 'cancelled'
+        ? 'cancelled'
+        : s === 'running'
+          ? 'running'
+          : 'pending';
+}
+
+function settleVisibleSteps(steps: StepView[], state: RunState): StepView[] {
+  if (state !== 'failed' && state !== 'cancelled') return steps;
+  return steps.map((step) => step.state === 'running' ? { ...step, state } : step);
 }
 
 interface AgentRunCardProps {
@@ -190,7 +203,10 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           finishedRef.current = true;
           esRef.current?.close();
           esRef.current = null;
-          if (s && isKnownRunState(s)) setRunState(s);
+          if (s && isKnownRunState(s)) {
+            setRunState(s);
+            setSteps((current) => settleVisibleSteps(current, s));
+          }
           setSummary(str(p.summary) ?? null);
           setApproval(null);
           setStreamError(false);
@@ -214,7 +230,14 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         setRunState(res.run.state);
         // Run already terminal: don't subscribe to SSE (server closes it
         // immediately, which EventSource reports as an error).
-        if (!isRunActive(res.run.state)) finishedRef.current = true;
+        if (!isRunActive(res.run.state)) {
+          const firstTerminalRefresh = !finishedRef.current;
+          finishedRef.current = true;
+          esRef.current?.close();
+          esRef.current = null;
+          setStreamError(false);
+          if (firstTerminalRefresh) onFinishedRef.current(runId);
+        }
       }
       setCompletedSteps(res.run.completedSteps);
       setTotalSteps(res.run.totalSteps);
@@ -224,15 +247,14 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           ? { reason: res.run.approval.reason, requestedBudgetUsd: res.run.approval.requestedBudgetUsd }
           : null,
       );
-      setSteps(
-        (res.steps ?? []).map((s) => ({
+      const hydratedSteps = (res.steps ?? []).map((s) => ({
           key: s.id,
           title: s.title,
           tool: s.tool || undefined,
           state: stepStateOf(s.state),
           error: s.error ?? undefined,
-        })),
-      );
+        }));
+      setSteps(settleVisibleSteps(hydratedSteps, res.run.state));
     } catch {
       // SSE is the source of truth; hydrate is best-effort (e.g. endpoint
       // not deployed yet — the card still works from streamed events).
@@ -264,6 +286,23 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
     };
   }, [hydrate, subscribe]);
 
+  useEffect(() => {
+    if (!streamError || finishedRef.current) return;
+    let polling = false;
+    const poll = async () => {
+      if (polling || finishedRef.current) return;
+      polling = true;
+      try {
+        await hydrate();
+      } finally {
+        polling = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    return () => window.clearInterval(timer);
+  }, [hydrate, streamError]);
+
   /* --------------------------------- actions --------------------------------- */
 
   const decide = async (approved: boolean) => {
@@ -293,11 +332,6 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
     } finally {
       setActing(null);
     }
-  };
-
-  const retry = () => {
-    void hydrate();
-    subscribe();
   };
 
   /* ---------------------------------- render ---------------------------------- */
@@ -370,6 +404,8 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
                 <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" aria-label={t('agent.completed')} />
               ) : s.state === 'failed' ? (
                 <XCircle size={14} className="mt-0.5 shrink-0 text-red-500" aria-label={t('agent.failed')} />
+              ) : s.state === 'cancelled' ? (
+                <X size={14} className="mt-0.5 shrink-0 text-slate-400" aria-label={t('agent.cancelled')} />
               ) : s.state === 'running' ? (
                 <Spinner size="sm" />
               ) : (
@@ -455,16 +491,11 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         </div>
       )}
 
-      {/* Stream error → manual retry (no infinite reconnect) */}
+      {/* SSE can be interrupted by proxies; polling keeps progress durable. */}
       {streamError && active && (
         <div className="mt-2.5 flex items-start gap-2.5 rounded-xl border border-sky-200 bg-sky-50/80 p-3 dark:border-sky-400/20 dark:bg-sky-400/[0.08]" role="status">
-          <RefreshCw size={15} className="mt-0.5 shrink-0 text-sky-600 dark:text-sky-300" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-xs leading-relaxed text-sky-900 dark:text-sky-100">{t('agent.retryNote')}</p>
-            <Button size="sm" variant="secondary" className="mt-2" onClick={retry} icon={<RefreshCw size={14} />}>
-              {t('agent.retry')}
-            </Button>
-          </div>
+          <RefreshCw size={15} className="mt-0.5 shrink-0 animate-spin text-sky-600 dark:text-sky-300" aria-hidden="true" />
+          <p className="min-w-0 text-xs leading-relaxed text-sky-900 dark:text-sky-100">{t('agent.retryNote')}</p>
         </div>
       )}
 

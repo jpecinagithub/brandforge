@@ -11,4 +11,5 @@ export * from './roles.js';
 export * from './planner.js';
 export * from './memory.js';
 export * from './orchestrator.js';
+export * from './run-lifecycle.js';
 export * from './tools/index.js';

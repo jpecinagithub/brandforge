@@ -34,6 +34,7 @@ import {
   type Db,
 } from '@brandforge/database';
 import { assertTransition } from './state-machine.js';
+import { closeRunningAgentSteps } from './run-lifecycle.js';
 import { topologicalLevels } from './graph.js';
 import { planRun, PlannerError } from './planner.js';
 import { BUDGET_NOT_AFFORDABLE, stableHash } from './tools/helpers.js';
@@ -1001,7 +1002,9 @@ export class Orchestrator {
   ): Promise<void> {
     const fresh = await this.loadRun(run.id).catch(() => run);
     const error = publicRunFailure(language);
+    const stepError = publicStepFailure(language);
     console.error(`[agent-run:${run.id}] ${internalError}`);
+    await closeRunningAgentSteps(this.db, run.id, 'failed', stepError);
     await this.db
       .update(agentRuns)
       .set({ error, updatedAt: new Date() })
@@ -1128,6 +1131,7 @@ export class Orchestrator {
       return { id: run.id, state: status }; // terminal: idempotent no-op
     }
     const emit = this.emitFor(runId);
+    await closeRunningAgentSteps(this.db, run.id, 'cancelled', null);
     await this.transitionTo(run, 'cancelled', emit);
     await emit('run.finished', { status: 'cancelled' });
     return { id: run.id, state: 'cancelled' };
