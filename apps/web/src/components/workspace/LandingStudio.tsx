@@ -33,7 +33,6 @@ export function LandingStudio({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<Device>('desktop');
   const [html, setHtml] = useState('');
-  const [previewUrl, setPreviewUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -99,16 +98,6 @@ export function LandingStudio({
       });
     return () => controller.abort();
   }, [selectedId, previewRefreshKey]);
-
-  useEffect(() => {
-    if (!html) {
-      setPreviewUrl('');
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [html]);
 
   if (loading) {
     return <div className="flex h-64 items-center justify-center text-violet-600"><Spinner size="lg" /></div>;
@@ -211,7 +200,7 @@ export function LandingStudio({
             ) : (
               <iframe
                 title={selected?.name ?? t('workspace.landingTitle')}
-                src={previewUrl || undefined}
+                srcDoc={html || undefined}
                 sandbox=""
                 className="h-[620px] w-full border-0 bg-white"
               />
