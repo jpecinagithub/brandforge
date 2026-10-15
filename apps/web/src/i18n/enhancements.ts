@@ -1,4 +1,7 @@
 export const enEnhancements = {
+  dashboard: {
+    noFavoritesDesc: 'Star a campaign to keep it close at hand here.',
+  },
   agent: {
     retry: 'Refresh status',
     retryNote: 'Live updates paused, but the agent may still be working. Refresh the status whenever you want.',
@@ -21,10 +24,15 @@ export const enEnhancements = {
     landingRefresh: 'Refresh preview',
     landingLoadError: 'The preview could not be loaded.',
     landingPagesLabel: 'Versions',
+    favoriteCampaign: 'Add {{name}} to favorites',
+    unfavoriteCampaign: 'Remove {{name}} from favorites',
   },
 } as const;
 
 export const esEnhancements = {
+  dashboard: {
+    noFavoritesDesc: 'Marca una campaña con la estrella para tenerla siempre a mano aquí.',
+  },
   agent: {
     retry: 'Actualizar estado',
     retryNote: 'Las actualizaciones en directo se han pausado, pero el agente puede seguir trabajando. Actualiza el estado cuando quieras.',
@@ -47,5 +55,7 @@ export const esEnhancements = {
     landingRefresh: 'Actualizar vista previa',
     landingLoadError: 'No se ha podido cargar la vista previa.',
     landingPagesLabel: 'Versiones',
+    favoriteCampaign: 'Añadir {{name}} a favoritos',
+    unfavoriteCampaign: 'Quitar {{name}} de favoritos',
   },
 } as const;

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, CardContent, CardIcon, EmptyState, Spinner } from '@brandforge/ui';
 import { FolderKanban, Megaphone, Coins, Plus, Star, ArrowRight, Coffee, Rocket, UtensilsCrossed } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { get } from '@/lib/api';
+import { get, patch } from '@/lib/api';
 import type { Campaign, Project, Workspace } from '@/lib/types';
 import { NewCampaignModal } from '@/components/NewCampaignModal';
 
@@ -25,7 +25,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [recent, setRecent] = useState<RecentCampaign[]>([]);
+  const [campaigns, setCampaigns] = useState<RecentCampaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -37,25 +37,25 @@ export function Dashboard() {
       setWorkspace(ws);
       if (!ws) {
         setProjects([]);
-        setRecent([]);
+        setCampaigns([]);
         return;
       }
       const { projects } = await get<{ projects: Project[] }>(`/api/v1/projects?workspaceId=${ws.id}`);
       setProjects(projects);
-      const all: RecentCampaign[] = [];
-      for (const p of projects) {
+      const perProject = await Promise.all(projects.map(async (p) => {
         try {
-          const { campaigns } = await get<{ campaigns: Campaign[] }>(`/api/v1/projects/${p.id}/campaigns`);
-          for (const c of campaigns) all.push({ ...c, projectName: p.name, projectId: p.id });
+          const response = await get<{ campaigns: Campaign[] }>(`/api/v1/projects/${p.id}/campaigns`);
+          return response.campaigns.map((campaign) => ({ ...campaign, projectName: p.name, projectId: p.id }));
         } catch {
-          // one failing project must not break the dashboard
+          return [];
         }
-      }
+      }));
+      const all = perProject.flat();
       all.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
-      setRecent(all.slice(0, 5));
+      setCampaigns(all);
     } catch {
       setProjects([]);
-      setRecent([]);
+      setCampaigns([]);
     } finally {
       setLoading(false);
     }
@@ -65,9 +65,21 @@ export function Dashboard() {
     void load();
   }, [load]);
 
-  const favorites = useMemo(() => projects.filter((p) => p.isFavorite), [projects]);
+  const recent = useMemo(() => campaigns.slice(0, 5), [campaigns]);
+  const favorites = useMemo(() => campaigns.filter((campaign) => campaign.isFavorite), [campaigns]);
   const campaignCount = useMemo(() => projects.reduce((n, p) => n + (p.campaignCount ?? 0), 0), [projects]);
   const demoProjectId = projects[0]?.id;
+
+  const toggleCampaignFavorite = async (campaign: RecentCampaign) => {
+    const favorite = !campaign.isFavorite;
+    setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: favorite } : item));
+    try {
+      const response = await patch<{ campaign: Campaign }>(`/api/v1/campaigns/${campaign.id}`, { isFavorite: favorite });
+      setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, ...response.campaign } : item));
+    } catch {
+      setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: campaign.isFavorite } : item));
+    }
+  };
 
   if (loading) {
     return (
@@ -147,14 +159,23 @@ export function Dashboard() {
             ) : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {recent.map((c) => (
-                  <li key={c.id}>
-                    <Link to={`/app/projects/${c.projectId}`} className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <li key={c.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <Link to={`/app/projects/${c.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{c.name}</p>
                         <p className="truncate text-xs text-slate-500 dark:text-slate-400">{c.projectName}</p>
                       </div>
                       <Badge tone={c.status === 'active' ? 'emerald' : 'slate'}>{c.status}</Badge>
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => void toggleCampaignFavorite(c)}
+                      aria-pressed={c.isFavorite}
+                      aria-label={t(c.isFavorite ? 'workspace.unfavoriteCampaign' : 'workspace.favoriteCampaign', { name: c.name })}
+                      className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-amber-400/10"
+                    >
+                      <Star size={17} className={c.isFavorite ? 'fill-amber-400 text-amber-400' : ''} />
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -170,15 +191,25 @@ export function Dashboard() {
               <EmptyState icon={<Star size={26} />} title={t('dashboard.noFavorites')} description={t('dashboard.noFavoritesDesc')} />
             ) : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {favorites.map((p) => (
-                  <li key={p.id}>
-                    <Link to={`/app/projects/${p.id}`} className="flex items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                {favorites.map((campaign) => (
+                  <li key={campaign.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <Link to={`/app/projects/${campaign.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <Star size={15} className="shrink-0 fill-amber-400 text-amber-400" />
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{p.name}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{campaign.name}</p>
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">{campaign.projectName}</p>
+                        </div>
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{t('dashboard.viewWorkspace')}</span>
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => void toggleCampaignFavorite(campaign)}
+                      aria-label={t('workspace.unfavoriteCampaign', { name: campaign.name })}
+                      className="rounded-lg p-2 text-amber-500 transition-colors hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:hover:bg-amber-400/10"
+                    >
+                      <Star size={17} className="fill-amber-400 text-amber-400" />
+                    </button>
                   </li>
                 ))}
               </ul>

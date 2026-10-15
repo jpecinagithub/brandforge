@@ -118,6 +118,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
+function publicStepFailure(language: 'en' | 'es'): string {
+  return language === 'es'
+    ? 'No se pudo completar esta comprobación interna. Todo lo creado hasta ahora se ha conservado.'
+    : 'This internal check could not be completed. Everything created so far has been preserved.';
+}
+
+function publicRunFailure(language: 'en' | 'es'): string {
+  return language === 'es'
+    ? 'La ejecución se ha detenido de forma segura y se han conservado todos los resultados creados.'
+    : 'The run stopped safely and all created results have been preserved.';
+}
+
+function publicBudgetPause(language: 'en' | 'es'): string {
+  return language === 'es'
+    ? 'Este paso está pausado hasta que apruebes el presupuesto solicitado.'
+    : 'This step is paused until you approve the requested budget.';
+}
+
 export const DEFAULT_ORCHESTRATOR_CONFIG: OrchestratorConfig = {
   maxSteps: 25,
   stepTimeoutMs: 120000,
@@ -480,7 +498,7 @@ export class Orchestrator {
     for (const level of levels) {
       const settled = await Promise.allSettled(
         level.map((step) =>
-          this.executeStep(step, parsed.steps.indexOf(step), base, emit),
+          this.executeStep(step, parsed.steps.indexOf(step), parsed.steps, base, emit),
         ),
       );
       for (const s of settled) {
@@ -501,6 +519,7 @@ export class Orchestrator {
   private async executeStep(
     step: PlanStep,
     stepNo: number,
+    planSteps: PlanStep[],
     base: StepExecutionContext,
     emit: EmitFn,
   ): Promise<'completed' | 'skipped'> {
@@ -540,7 +559,16 @@ export class Orchestrator {
     await emit('step.started', { stepId: step.id, title: step.title, tool: step.tool });
 
     const tool = this.registry.get(step.tool);
-    const argsHash = stableHash(step.args);
+    let resolvedArgs: Record<string, unknown>;
+    try {
+      resolvedArgs = await this.resolveStepArgs(step, planSteps, base.runId);
+    } catch (err) {
+      const internalError = err instanceof Error ? err.message : String(err);
+      const message = publicStepFailure(base.language);
+      await this.markStepFailed(stepRow.id, step, message, emit, internalError);
+      throw new StepFailedError(message);
+    }
+    const argsHash = stableHash(resolvedArgs);
     const ctx: ToolContext = {
       ...base,
       budget: this.ports.makeBudget({ runId: base.runId, workspaceId: base.workspaceId }),
@@ -567,7 +595,23 @@ export class Orchestrator {
       result = completedPrior.result as unknown as ToolResult;
       await emit('tool.completed', { stepId: step.id, tool: step.tool, cached: true });
     } else {
-      result = await this.runToolCall(tool, ctx, step, stepRow.id, argsHash, priorCalls[0]?.id, emit);
+      try {
+        result = await this.runToolCall(
+          tool,
+          ctx,
+          step,
+          resolvedArgs,
+          stepRow.id,
+          argsHash,
+          priorCalls[0]?.id,
+          emit,
+        );
+      } catch (err) {
+        const internalError = err instanceof Error ? err.message : String(err);
+        const message = publicStepFailure(base.language);
+        await this.markStepFailed(stepRow.id, step, message, emit, internalError);
+        throw new StepFailedError(message);
+      }
     }
 
     // Tool-level budget refusal → park the run for approval.
@@ -577,7 +621,13 @@ export class Orchestrator {
         : undefined;
     if (!result.ok && resultCode === BUDGET_NOT_AFFORDABLE) {
       const data = result.data as { reason?: string; requestedUsd?: number };
-      await this.markStepFailed(stepRow.id, step, result.summary, emit);
+      await this.markStepFailed(
+        stepRow.id,
+        step,
+        publicBudgetPause(base.language),
+        emit,
+        result.summary,
+      );
       await this.parkForBudget(
         base.runId,
         emit,
@@ -587,8 +637,9 @@ export class Orchestrator {
       throw new BudgetParkedSignal();
     }
     if (!result.ok) {
-      const message = result.summary || `Tool ${step.tool} failed`;
-      await this.markStepFailed(stepRow.id, step, message, emit);
+      const internalError = result.summary || `Tool ${step.tool} failed`;
+      const message = publicStepFailure(base.language);
+      await this.markStepFailed(stepRow.id, step, message, emit, internalError);
       throw new StepFailedError(message);
     }
 
@@ -596,10 +647,135 @@ export class Orchestrator {
     return 'completed';
   }
 
+  /**
+   * Planner step ids are references, not business ids. Resolve values such as
+   * `{ campaignId: "s1" }` from the completed result of step s1 before the
+   * tool schema sees them. Explicit `{{s1.campaignId}}` references are also
+   * supported for unambiguous plans.
+   */
+  private async resolveStepArgs(
+    step: PlanStep,
+    planSteps: PlanStep[],
+    runId: string,
+  ): Promise<Record<string, unknown>> {
+    const byId = new Map(planSteps.map((candidate, index) => [candidate.id, { candidate, index }]));
+    const ancestors = new Set<string>();
+    const visitDependencies = (candidate: PlanStep): void => {
+      for (const dependencyId of candidate.dependsOn) {
+        if (ancestors.has(dependencyId)) continue;
+        ancestors.add(dependencyId);
+        const dependency = byId.get(dependencyId)?.candidate;
+        if (dependency) visitDependencies(dependency);
+      }
+    };
+    visitDependencies(step);
+
+    const resultData = new Map<string, Record<string, unknown>>();
+    const loadResultData = async (referenceId: string): Promise<Record<string, unknown>> => {
+      const cached = resultData.get(referenceId);
+      if (cached) return cached;
+      const referenced = byId.get(referenceId);
+      if (!referenced) {
+        throw new OrchestratorError(`Step '${step.id}' references unknown step '${referenceId}'`);
+      }
+      if (!ancestors.has(referenceId)) {
+        throw new OrchestratorError(
+          `Step '${step.id}' references '${referenceId}' without a dependency path`,
+        );
+      }
+      const [referencedRow] = await this.db
+        .select()
+        .from(agentSteps)
+        .where(
+          and(
+            eq(agentSteps.runId, runId),
+            eq(agentSteps.stepNo, referenced.index),
+          ),
+        );
+      if (!referencedRow || referencedRow.status !== 'completed') {
+        throw new OrchestratorError(
+          `Step '${step.id}' needs the completed output of '${referenceId}'`,
+        );
+      }
+      const calls = await this.db
+        .select()
+        .from(agentToolCalls)
+        .where(eq(agentToolCalls.stepId, referencedRow.id));
+      const completed = [...calls]
+        .reverse()
+        .find((call) => call.status === 'completed' && call.result);
+      const result = completed?.result as ToolResult | null | undefined;
+      if (!result?.data || typeof result.data !== 'object' || Array.isArray(result.data)) {
+        throw new OrchestratorError(
+          `Completed step '${referenceId}' did not produce referenceable data`,
+        );
+      }
+      const data = result.data as Record<string, unknown>;
+      resultData.set(referenceId, data);
+      return data;
+    };
+
+    const readPath = (source: Record<string, unknown>, path: string): unknown => {
+      let current: unknown = source;
+      for (const segment of path.split('.')) {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+        current = (current as Record<string, unknown>)[segment];
+      }
+      return current;
+    };
+
+    const resolveReference = async (
+      referenceId: string,
+      fieldName: string | undefined,
+      explicitPath?: string,
+    ): Promise<unknown> => {
+      const data = await loadResultData(referenceId);
+      const requestedPath = explicitPath ?? fieldName;
+      if (requestedPath) {
+        const value = readPath(data, requestedPath);
+        if (value !== undefined) return value;
+      }
+      const idEntries = Object.entries(data).filter(
+        ([key, value]) => key.endsWith('Id') && typeof value === 'string',
+      );
+      if (idEntries.length === 1) return idEntries[0][1];
+      throw new OrchestratorError(
+        `Step '${referenceId}' has no output for argument '${requestedPath ?? 'unknown'}'`,
+      );
+    };
+
+    const resolveValue = async (value: unknown, fieldName?: string): Promise<unknown> => {
+      if (typeof value === 'string') {
+        const explicit = value.match(/^\{\{([^{}.]+)(?:\.([^{}]+))?\}\}$/);
+        if (explicit && byId.has(explicit[1])) {
+          return resolveReference(explicit[1], fieldName, explicit[2]);
+        }
+        if (byId.has(value)) return resolveReference(value, fieldName);
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return Promise.all(value.map((item) => resolveValue(item, fieldName)));
+      }
+      if (value && typeof value === 'object') {
+        const entries = await Promise.all(
+          Object.entries(value as Record<string, unknown>).map(async ([key, child]) => [
+            key,
+            await resolveValue(child, key),
+          ] as const),
+        );
+        return Object.fromEntries(entries);
+      }
+      return value;
+    };
+
+    return (await resolveValue(step.args)) as Record<string, unknown>;
+  }
+
   private async runToolCall(
     tool: AgentTool,
     ctx: ToolContext,
     step: PlanStep,
+    args: Record<string, unknown>,
     dbStepId: string,
     argsHash: string,
     priorCallId: string | undefined,
@@ -607,7 +783,7 @@ export class Orchestrator {
   ): Promise<ToolResult> {
     // Orchestrator-level budget guard for generate-category steps.
     if (tool.category === 'generate') {
-      const estimate = tool.estimateUsd(step.args);
+      const estimate = tool.estimateUsd(args);
       const check = await ctx.budget.checkAffordable(estimate);
       if (!check.ok) {
         return {
@@ -632,7 +808,7 @@ export class Orchestrator {
         .values({
           stepId: dbStepId,
           tool: step.tool,
-          args: step.args,
+          args,
           argsHash,
           status: 'running',
         })
@@ -646,7 +822,7 @@ export class Orchestrator {
     }
 
     try {
-      const result = await this.executeWithRetry(tool, ctx, step.args);
+      const result = await this.executeWithRetry(tool, ctx, args);
       const durationMs = Date.now() - startedAt;
       const costUsd = result.costUsd ?? result.usage?.costUsd ?? 0;
       await this.db
@@ -702,10 +878,27 @@ export class Orchestrator {
     step: PlanStep,
     message: string,
     emit: EmitFn,
+    internalError?: string,
   ): Promise<void> {
+    const [current] = await this.db
+      .select()
+      .from(agentSteps)
+      .where(eq(agentSteps.id, dbStepId));
+    const currentDetail =
+      current?.detail && typeof current.detail === 'object'
+        ? (current.detail as Record<string, unknown>)
+        : {};
     await this.db
       .update(agentSteps)
-      .set({ status: 'failed', error: message, finishedAt: new Date(), updatedAt: new Date() })
+      .set({
+        status: 'failed',
+        error: message,
+        detail: internalError
+          ? { ...currentDetail, internalError, internalErrorAt: new Date().toISOString() }
+          : currentDetail,
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(eq(agentSteps.id, dbStepId));
     await emit('step.failed', { stepId: step.id, tool: step.tool, error: message });
   }
@@ -803,10 +996,12 @@ export class Orchestrator {
   private async failRun(
     run: AgentRunRow,
     emit: EmitFn,
-    error: string,
+    internalError: string,
     language: 'en' | 'es',
   ): Promise<void> {
     const fresh = await this.loadRun(run.id).catch(() => run);
+    const error = publicRunFailure(language);
+    console.error(`[agent-run:${run.id}] ${internalError}`);
     await this.db
       .update(agentRuns)
       .set({ error, updatedAt: new Date() })
@@ -816,8 +1011,8 @@ export class Orchestrator {
     if (fresh.conversationId) {
       const message =
         language === 'es'
-          ? `No pude completar la tarea: ${error}`
-          : `I couldn't complete the task: ${error}`;
+          ? `No pude terminar la tarea, pero todo lo creado se ha conservado. Puedes reanudarla sin repetir los pasos completados.`
+          : `I couldn't finish the task, but everything created has been preserved. You can resume it without repeating completed steps.`;
       try {
         await this.ports
           .makeConversation()
@@ -948,13 +1143,24 @@ export class Orchestrator {
       throw new ResumeLimitError(this.config.maxAttempts);
     }
     const emit = this.emitFor(runId);
-    const attempts = run.attempts + 1;
+    const parsedPlan = AgentPlanSchema.safeParse(run.plan);
+    const target: RunState = parsedPlan.success && run.totalSteps > 0 ? 'running' : 'pending';
     await this.db
       .update(agentRuns)
-      .set({ attempts, error: null, updatedAt: new Date() })
+      .set({
+        error: null,
+        claimedBy: null,
+        heartbeatAt: null,
+        finishedAt: null,
+        updatedAt: new Date(),
+      })
       .where(eq(agentRuns.id, runId));
-    await this.transitionTo({ ...run, attempts }, 'pending', emit);
-    return { id: run.id, state: 'pending' };
+    await this.transitionTo(
+      { ...run, error: null, claimedBy: null, heartbeatAt: null, finishedAt: null },
+      target,
+      emit,
+    );
+    return { id: run.id, state: target };
   }
 
   async approveRun(

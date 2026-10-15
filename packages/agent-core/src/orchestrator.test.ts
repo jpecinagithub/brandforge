@@ -100,6 +100,14 @@ function setup(
           durationMs: 5,
         };
       }
+      if (text.includes('Review the campaign for brand coherence')) {
+        return {
+          content: JSON.stringify({ score: 92, issues: [] }),
+          model: o.model,
+          usage,
+          durationMs: 5,
+        };
+      }
       return {
         content: 'Run summary: campaign created and copy written.',
         model: o.model,
@@ -269,7 +277,47 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
     expect(db.__table('campaigns')).toHaveLength(0);
   });
 
-  it('a failed run can be resumed (attempts+1) and reports honestly', async () => {
+  it('resolves a prior step id to the business id required by a later tool', async () => {
+    const plan = {
+      steps: [
+        {
+          id: 's1',
+          tool: 'create_campaign',
+          title: 'Create campaign',
+          args: { name: 'Launch', objective: 'Awareness' },
+          dependsOn: [],
+        },
+        {
+          id: 's2',
+          tool: 'review_campaign',
+          title: 'Review campaign',
+          args: { campaignId: 's1' },
+          dependsOn: ['s1'],
+        },
+      ],
+      estimatedCostUsd: 0.01,
+    };
+    const { db, orch } = setup(plan);
+    const { id: runId } = await orch.startRun({
+      userId: 'u1',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      input: 'Create and review a campaign',
+    });
+
+    await orch.executeRun(runId);
+
+    const [run] = db.__table('agent_runs');
+    const [campaign] = db.__table('campaigns');
+    const reviewCall = db.__table('agent_tool_calls').find((call) => call.tool === 'review_campaign');
+    expect(run.status).toBe('completed');
+    expect(run.completedSteps).toBe(2);
+    expect(reviewCall?.status).toBe('completed');
+    expect((reviewCall?.args as { campaignId: string }).campaignId).toBe(campaign.id);
+    expect((reviewCall?.args as { campaignId: string }).campaignId).not.toBe('s1');
+  });
+
+  it('keeps technical failures internal and resumes the stored plan without duplicating attempts', async () => {
     const badPlan = {
       steps: [
         {
@@ -294,12 +342,18 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
     await orch.executeRun(runId);
     const runs = db.__table('agent_runs');
     expect(runs[0].status).toBe('failed');
-    expect(runs[0].error).toContain('Invalid arguments');
+    expect(runs[0].error).not.toContain('Invalid arguments');
+    expect(runs[0].error).toContain('stopped safely');
+    const [step] = db.__table('agent_steps');
+    expect(step.status).toBe('failed');
+    expect(step.error).not.toContain('Invalid arguments');
+    expect((step.detail as { internalError: string }).internalError).toContain('Invalid arguments');
     expect(conversation.messages).toHaveLength(1);
-    expect(conversation.messages[0].content).toContain("couldn't complete");
+    expect(conversation.messages[0].content).toContain('everything created has been preserved');
 
     const resumed = await orch.resumeRun(runId);
-    expect(resumed.state).toBe('pending');
-    expect(db.__table('agent_runs')[0].attempts).toBe(1);
+    expect(resumed.state).toBe('running');
+    expect(db.__table('agent_runs')[0].attempts).toBe(0);
+    expect(db.__table('agent_runs')[0].finishedAt).toBeNull();
   });
 });

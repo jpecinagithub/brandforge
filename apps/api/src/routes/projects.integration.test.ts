@@ -82,6 +82,17 @@ describe('project workspace flow', () => {
       }),
     );
     expect(cc.statusCode).toBe(201);
+    const campaignId = (cc.json() as { campaign: { id: string } }).campaign.id;
+
+    const favoriteCampaign = await app.inject(
+      authed(cookie, {
+        method: 'PATCH',
+        url: `/api/v1/campaigns/${campaignId}`,
+        payload: { isFavorite: true },
+      }),
+    );
+    expect(favoriteCampaign.statusCode).toBe(200);
+    expect(favoriteCampaign.json().campaign.isFavorite).toBe(true);
 
     const bk = await app.inject(
       authed(cookie, {

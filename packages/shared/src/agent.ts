@@ -31,8 +31,8 @@ export const RUN_TRANSITIONS: Record<RunState, readonly RunState[]> = {
   running: ['waiting_approval', 'completed', 'failed', 'cancelled'],
   waiting_approval: ['running', 'cancelled', 'failed'],
   completed: [],
-  failed: ['pending'], // resume re-queues a failed run
-  cancelled: ['pending'], // resume re-queues a cancelled run
+  failed: ['pending', 'running'], // resume continues a stored plan when available
+  cancelled: ['pending', 'running'], // likewise for a cancelled planned run
 };
 
 export function canTransition(from: RunState, to: RunState): boolean {

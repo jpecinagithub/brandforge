@@ -26,6 +26,7 @@ void i18n.use(initReactI18next).init({
       translation: {
         ...en,
         agent: { ...en.agent, ...enEnhancements.agent },
+        dashboard: { ...en.dashboard, ...enEnhancements.dashboard },
         workspace: { ...en.workspace, ...enEnhancements.workspace },
       },
     },
@@ -33,6 +34,7 @@ void i18n.use(initReactI18next).init({
       translation: {
         ...es,
         agent: { ...es.agent, ...esEnhancements.agent },
+        dashboard: { ...es.dashboard, ...esEnhancements.dashboard },
         workspace: { ...es.workspace, ...esEnhancements.workspace },
       },
     },

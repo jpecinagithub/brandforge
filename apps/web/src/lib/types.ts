@@ -30,9 +30,11 @@ export interface Project {
 
 export interface Campaign {
   id: string;
+  projectId: string;
   name: string;
   objective?: string | null;
   status: string;
+  isFavorite: boolean;
   updatedAt: string;
 }
 

@@ -63,10 +63,10 @@ export async function planRun(
     (input.language === 'es'
       ? `Formato de salida — devuelve EXACTAMENTE este JSON, sin nada más:
 {"steps":[{"id":"s1","tool":"<nombre>","title":"<título breve>","args":{...},"dependsOn":[],"role":"<rol opcional>"}],"estimatedCostUsd":<número opcional>,"notes":"<opcional>"}
-Reglas: 1..${input.maxSteps} pasos. Los ids son "s1","s2",... dependsOn solo puede referenciar ids anteriores. Usa los roles del catálogo cuando encajen.`
+Reglas: 1..${input.maxSteps} pasos. Los ids son "s1","s2",... dependsOn solo puede referenciar ids anteriores. Si un argumento necesita un ID creado por un paso anterior, usa el id de ese paso como referencia (por ejemplo, {"campaignId":"s1"}) o la forma explícita "{{s1.campaignId}}", y declara la dependencia. El runtime resolverá el valor real: nunca inventes UUIDs. Usa los roles del catálogo cuando encajen.`
       : `Output format — return EXACTLY this JSON, nothing else:
 {"steps":[{"id":"s1","tool":"<name>","title":"<short title>","args":{...},"dependsOn":[],"role":"<optional role>"}],"estimatedCostUsd":<optional number>,"notes":"<optional>"}
-Rules: 1..${input.maxSteps} steps. Ids are "s1","s2",... dependsOn may only reference earlier ids. Use catalog roles when they fit.`);
+Rules: 1..${input.maxSteps} steps. Ids are "s1","s2",... dependsOn may only reference earlier ids. When an argument needs an ID created by an earlier step, use that step id as a reference (for example, {"campaignId":"s1"}) or the explicit form "{{s1.campaignId}}", and declare the dependency. The runtime resolves the real value: never invent UUIDs. Use catalog roles when they fit.`);
 
   const userPayload = {
     goal: input.goal,

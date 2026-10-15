@@ -197,6 +197,7 @@ export const CampaignSchema = z.object({
   name: z.string(),
   objective: z.string(),
   status: z.string(),
+  isFavorite: z.boolean(),
   updatedAt: z.string(),
 });
 export type Campaign = z.infer<typeof CampaignSchema>;
@@ -211,6 +212,7 @@ export const UpdateCampaignInputSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   objective: z.string().max(2000).optional(),
   status: z.string().max(50).optional(),
+  isFavorite: z.boolean().optional(),
 });
 export type UpdateCampaignInput = z.infer<typeof UpdateCampaignInputSchema>;
 

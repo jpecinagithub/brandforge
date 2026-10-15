@@ -17,6 +17,7 @@ export function toCampaignApi(c: Campaign) {
     name: c.name,
     objective: c.objective,
     status: c.status,
+    isFavorite: c.isFavorite,
     updatedAt: c.updatedAt ? c.updatedAt.toISOString() : c.createdAt.toISOString(),
   };
 }

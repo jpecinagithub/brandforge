@@ -33,9 +33,7 @@ describe('canTransition', () => {
       ['completed', 'pending'],
       ['completed', 'failed'],
       ['completed', 'cancelled'],
-      ['failed', 'running'],
       ['failed', 'completed'],
-      ['cancelled', 'running'],
       ['cancelled', 'failed'],
     ];
     for (const [from, to] of illegal) {
@@ -51,6 +49,8 @@ describe('assertTransition', () => {
     expect(() => assertTransition('running', 'waiting_approval')).not.toThrow();
     expect(() => assertTransition('waiting_approval', 'running')).not.toThrow();
     expect(() => assertTransition('failed', 'pending')).not.toThrow();
+    expect(() => assertTransition('failed', 'running')).not.toThrow();
+    expect(() => assertTransition('cancelled', 'running')).not.toThrow();
   });
 
   it('throws IllegalTransitionError for illegal transitions', () => {

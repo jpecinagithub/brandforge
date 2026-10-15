@@ -166,6 +166,7 @@ export const campaigns = pgTable('campaigns', {
   name: text('name').notNull(),
   objective: text('objective').notNull().default(''),
   status: text('status').notNull().default('draft'),
+  isFavorite: boolean('is_favorite').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
 });

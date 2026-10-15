@@ -35,6 +35,7 @@ function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCount
   const [objective, setObjective] = useState('');
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [favoriteId, setFavoriteId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,6 +80,21 @@ function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCount
     }
   };
 
+  const toggleFavorite = async (campaign: Campaign) => {
+    if (favoriteId) return;
+    const favorite = !campaign.isFavorite;
+    setFavoriteId(campaign.id);
+    setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: favorite } : item));
+    try {
+      const response = await patch<{ campaign: Campaign }>(`/api/v1/campaigns/${campaign.id}`, { isFavorite: favorite });
+      setCampaigns((current) => current.map((item) => item.id === campaign.id ? response.campaign : item));
+    } catch {
+      setCampaigns((current) => current.map((item) => item.id === campaign.id ? campaign : item));
+    } finally {
+      setFavoriteId(null);
+    }
+  };
+
   if (loading) return <div className="flex h-40 items-center justify-center text-violet-600"><Spinner /></div>;
 
   return (
@@ -102,6 +118,16 @@ function CampaignsTab({ projectId, onCountChange }: { projectId: string; onCount
                 {c.objective && <p className="mt-0.5 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{c.objective}</p>}
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void toggleFavorite(c)}
+                  disabled={favoriteId !== null}
+                  aria-pressed={c.isFavorite}
+                  aria-label={t(c.isFavorite ? 'workspace.unfavoriteCampaign' : 'workspace.favoriteCampaign', { name: c.name })}
+                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60 dark:hover:bg-amber-400/10"
+                >
+                  {favoriteId === c.id ? <Spinner size="sm" /> : <Star size={17} className={c.isFavorite ? 'fill-amber-400 text-amber-400' : ''} />}
+                </button>
                 <Badge tone={c.status === 'active' ? 'emerald' : 'slate'}>{c.status}</Badge>
                 <button
                   onClick={() => void remove(c.id)}
@@ -351,12 +377,6 @@ export function ProjectWorkspace() {
     }
   };
 
-  const toggleFavorite = async () => {
-    if (!project) return;
-    const res = await post<{ project: Project }>(`/api/v1/projects/${project.id}/favorite`, { favorite: !project.isFavorite });
-    setProject(res.project);
-  };
-
   const createProject = async () => {
     if (!project || newProjectName.trim().length < 2) return;
     const res = await post<{ project: Project }>('/api/v1/projects', {
@@ -415,7 +435,6 @@ export function ProjectWorkspace() {
           >
             <FolderKanban size={15} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">{p.name}</span>
-            {p.isFavorite && <Star size={13} className="shrink-0 fill-amber-400 text-amber-400" />}
           </Link>
         ))}
       </div>
@@ -442,10 +461,6 @@ export function ProjectWorkspace() {
         )}
         <div className="flex items-center gap-1.5">
           {savedTick && <span className="text-xs text-emerald-600 dark:text-emerald-400">{t('workspace.saved')}</span>}
-          <button onClick={() => void toggleFavorite()} aria-label={t('workspace.overviewFavorite')}
-            className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-amber-500 dark:hover:bg-slate-800">
-            <Star size={17} className={project.isFavorite ? 'fill-amber-400 text-amber-400' : ''} />
-          </button>
           <span title={t('workspace.exportTooltip')}>
             <Button size="sm" variant="secondary" icon={<Download size={15} />} disabled className="cursor-not-allowed">
               {t('workspace.export')}
