@@ -34,6 +34,7 @@ export function App() {
             <Route path="/app" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="projects/:id" element={<ProjectWorkspace />} />
+              <Route path="campaigns/:id" element={<ProjectWorkspace />} />
               <Route path="profile" element={<Profile />} />
               <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
             </Route>

@@ -29,6 +29,7 @@ import {
   agentSteps,
   agentToolCalls,
   brandKits,
+  campaigns,
   projects,
   type AgentRun as AgentRunRow,
   type Db,
@@ -347,10 +348,23 @@ export class Orchestrator {
     let brandKitSummary = '';
     try {
       projectMemory = await memory.getProjectMemory(run.projectId);
-      const [kit] = await this.db
-        .select()
-        .from(brandKits)
-        .where(eq(brandKits.projectId, run.projectId));
+      const [[kit], [campaign]] = await Promise.all([
+        this.db.select().from(brandKits).where(eq(brandKits.projectId, run.projectId)),
+        this.db.select().from(campaigns).where(eq(campaigns.projectId, run.projectId)),
+      ]);
+      if (campaign) {
+        const deliverables = Array.isArray(campaign.deliverables) ? campaign.deliverables.join(', ') : '';
+        projectMemory = {
+          ...projectMemory,
+          campaignBrief: {
+            name: campaign.name,
+            objective: campaign.objective,
+            brief: campaign.brief,
+            audience: campaign.audience,
+            deliverables,
+          },
+        };
+      }
       if (kit) {
         brandKitSummary =
           `Brand: ${kit.brandName}. Tagline: ${kit.tagline}. Tone: ${kit.tone}. Audience: ${kit.audience}.`.slice(0, 500);

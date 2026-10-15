@@ -196,6 +196,9 @@ export const CampaignSchema = z.object({
   projectId: z.string().uuid(),
   name: z.string(),
   objective: z.string(),
+  brief: z.string(),
+  audience: z.string(),
+  deliverables: z.array(z.enum(['logo', 'brand_kit', 'print_assets', 'landing_page'])),
   status: z.string(),
   isFavorite: z.boolean(),
   updatedAt: z.string(),
@@ -205,12 +208,18 @@ export type Campaign = z.infer<typeof CampaignSchema>;
 export const CreateCampaignInputSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(200),
   objective: z.string().max(2000).default(''),
+  brief: z.string().max(8000).default(''),
+  audience: z.string().max(3000).default(''),
+  deliverables: z.array(z.enum(['logo', 'brand_kit', 'print_assets', 'landing_page'])).max(4).default([]),
 });
 export type CreateCampaignInput = z.infer<typeof CreateCampaignInputSchema>;
 
 export const UpdateCampaignInputSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   objective: z.string().max(2000).optional(),
+  brief: z.string().max(8000).optional(),
+  audience: z.string().max(3000).optional(),
+  deliverables: z.array(z.enum(['logo', 'brand_kit', 'print_assets', 'landing_page'])).max(4).optional(),
   status: z.string().max(50).optional(),
   isFavorite: z.boolean().optional(),
 });

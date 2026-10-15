@@ -33,10 +33,15 @@ export interface Campaign {
   projectId: string;
   name: string;
   objective?: string | null;
+  brief: string;
+  audience: string;
+  deliverables: CampaignDeliverable[];
   status: string;
   isFavorite: boolean;
   updatedAt: string;
 }
+
+export type CampaignDeliverable = 'logo' | 'brand_kit' | 'print_assets' | 'landing_page';
 
 export interface BrandKit {
   id?: string;

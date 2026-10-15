@@ -16,6 +16,9 @@ export function toCampaignApi(c: Campaign) {
     projectId: c.projectId,
     name: c.name,
     objective: c.objective,
+    brief: c.brief,
+    audience: c.audience,
+    deliverables: c.deliverables,
     status: c.status,
     isFavorite: c.isFavorite,
     updatedAt: c.updatedAt ? c.updatedAt.toISOString() : c.createdAt.toISOString(),
@@ -59,7 +62,7 @@ export async function campaignRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) return Errors.validation(reply, 'Invalid input', zodDetails(parsed.error));
     const [c] = await db
       .insert(campaigns)
-      .values({ projectId, name: parsed.data.name, objective: parsed.data.objective })
+      .values({ projectId, ...parsed.data })
       .returning();
     const { ip, userAgent } = requestMeta(request);
     await audit(db, { userId: req.user.rawId, action: 'campaign.create', ip, userAgent, meta: { campaignId: c.id } });

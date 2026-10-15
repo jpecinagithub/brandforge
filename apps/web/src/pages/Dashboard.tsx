@@ -2,14 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Card, CardContent, CardIcon, EmptyState, Spinner } from '@brandforge/ui';
-import { FolderKanban, Megaphone, Coins, Plus, Star } from 'lucide-react';
+import { Image as ImageIcon, Megaphone, Plus, Star } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { get, patch } from '@/lib/api';
 import type { Campaign, Project, Workspace } from '@/lib/types';
 import { NewCampaignModal } from '@/components/NewCampaignModal';
 
 interface RecentCampaign extends Campaign {
-  projectName: string;
   projectId: string;
 }
 
@@ -39,7 +38,7 @@ export function Dashboard() {
       const perProject = await Promise.all(projects.map(async (p) => {
         try {
           const response = await get<{ campaigns: Campaign[] }>(`/api/v1/projects/${p.id}/campaigns`);
-          return response.campaigns.map((campaign) => ({ ...campaign, projectName: p.name, projectId: p.id }));
+          return response.campaigns.map((campaign) => ({ ...campaign, projectId: p.id }));
         } catch {
           return [];
         }
@@ -61,7 +60,7 @@ export function Dashboard() {
 
   const recent = useMemo(() => campaigns.slice(0, 5), [campaigns]);
   const favorites = useMemo(() => campaigns.filter((campaign) => campaign.isFavorite), [campaigns]);
-  const campaignCount = useMemo(() => projects.reduce((n, p) => n + (p.campaignCount ?? 0), 0), [projects]);
+  const assetCount = useMemo(() => projects.reduce((total, project) => total + (project.assetCount ?? 0), 0), [projects]);
   const toggleCampaignFavorite = async (campaign: RecentCampaign) => {
     const favorite = !campaign.isFavorite;
     setCampaigns((current) => current.map((item) => item.id === campaign.id ? { ...item, isFavorite: favorite } : item));
@@ -100,19 +99,19 @@ export function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card><CardContent className="flex items-center gap-4">
-          <CardIcon tone="violet"><FolderKanban size={20} /></CardIcon>
-          <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{projects.length}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.statsProjects')}</p></div>
-        </CardContent></Card>
-        <Card><CardContent className="flex items-center gap-4">
-          <CardIcon tone="amber"><Megaphone size={20} /></CardIcon>
-          <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{campaignCount}</p>
+          <CardIcon tone="violet"><Megaphone size={20} /></CardIcon>
+          <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{campaigns.length}</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.statsCampaigns')}</p></div>
         </CardContent></Card>
-        <Card><CardContent className="flex items-center gap-4" title={t('dashboard.creditsHint')}>
-          <CardIcon tone="emerald"><Coins size={20} /></CardIcon>
-          <div><p className="text-2xl font-bold text-slate-400 dark:text-slate-500">{t('dashboard.creditsPlaceholder')}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.statsCredits')}</p></div>
+        <Card><CardContent className="flex items-center gap-4">
+          <CardIcon tone="amber"><ImageIcon size={20} /></CardIcon>
+          <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{assetCount}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.statsAssets')}</p></div>
+        </CardContent></Card>
+        <Card><CardContent className="flex items-center gap-4">
+          <CardIcon tone="emerald"><Star size={20} /></CardIcon>
+          <div><p className="text-2xl font-bold text-slate-900 dark:text-white">{favorites.length}</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('dashboard.statsFavorites')}</p></div>
         </CardContent></Card>
       </div>
 
@@ -127,10 +126,10 @@ export function Dashboard() {
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {recent.map((c) => (
                   <li key={c.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <Link to={`/app/projects/${c.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
+                    <Link to={`/app/campaigns/${c.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{c.name}</p>
-                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">{c.projectName}</p>
+                        {c.objective ? <p className="truncate text-xs text-slate-500 dark:text-slate-400">{c.objective}</p> : null}
                       </div>
                       <Badge tone={c.status === 'active' ? 'emerald' : 'slate'}>{c.status}</Badge>
                     </Link>
@@ -160,12 +159,12 @@ export function Dashboard() {
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {favorites.map((campaign) => (
                   <li key={campaign.id} className="flex items-center gap-2 px-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                    <Link to={`/app/projects/${campaign.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
+                    <Link to={`/app/campaigns/${campaign.projectId}`} className="flex min-w-0 flex-1 items-center justify-between gap-3 px-2 py-3.5">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <Star size={15} className="shrink-0 fill-amber-400 text-amber-400" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{campaign.name}</p>
-                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">{campaign.projectName}</p>
+                          {campaign.objective ? <p className="truncate text-xs text-slate-500 dark:text-slate-400">{campaign.objective}</p> : null}
                         </div>
                       </div>
                     </Link>
@@ -185,7 +184,7 @@ export function Dashboard() {
         </section>
       </div>
 
-      <NewCampaignModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={(id) => navigate(`/app/projects/${id}`)} />
+      <NewCampaignModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={(id) => navigate(`/app/campaigns/${id}`)} />
     </div>
   );
 }

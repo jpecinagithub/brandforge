@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Badge, Button, Card, CardContent, CardHeader, EmptyState, Input, Spinner } from '@brandforge/ui';
-import { Users, UserCheck, UserX, FlaskConical, FolderKanban, Megaphone, Cpu, AlertTriangle, Search, ShieldCheck } from 'lucide-react';
+import { Users, UserCheck, UserX, FlaskConical, Megaphone, Cpu, AlertTriangle, Search, ShieldCheck } from 'lucide-react';
 import { get, patch, post } from '@/lib/api';
 import type { AdminOverview, AdminUser, AuditLog } from '@/lib/types';
 
@@ -102,7 +102,6 @@ export function Admin() {
               <StatCard icon={<UserCheck size={18} />} label={t('admin.usersActive')} value={overview.usersActive} tone="emerald" />
               <StatCard icon={<UserX size={18} />} label={t('admin.usersBlocked')} value={overview.usersBlocked} tone="red" />
               <StatCard icon={<FlaskConical size={18} />} label={t('admin.demoActive')} value={overview.demoActive} tone="amber" />
-              <StatCard icon={<FolderKanban size={18} />} label={t('admin.projectsTotal')} value={overview.projectsTotal} tone="sky" />
               <StatCard icon={<Megaphone size={18} />} label={t('admin.campaignsTotal')} value={overview.campaignsTotal} tone="violet" />
               <StatCard icon={<Cpu size={18} />} label={t('admin.agentRunsTotal')} value={overview.agentRunsTotal} tone="emerald" />
               <StatCard icon={<AlertTriangle size={18} />} label={t('admin.errorsLast24h')} value={overview.errorsLast24h} tone="red" />
