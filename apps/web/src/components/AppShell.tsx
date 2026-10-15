@@ -8,6 +8,7 @@ import { Logo } from '@/components/Logo';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { DemoBanner } from '@/components/DemoBanner';
+import { mediaUrl } from '@/lib/api';
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -71,7 +72,7 @@ export function AppShell() {
               {user && (
                 <div className="relative">
                   <Link to="/app/profile" className="flex items-center gap-2.5 rounded-xl p-1.5 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800">
-                    <Avatar name={user.name} src={user.avatarUrl} size="sm" />
+                    <Avatar name={user.name} src={mediaUrl(user.avatarUrl)} size="sm" />
                     <span className="hidden max-w-32 truncate text-sm font-medium text-slate-700 sm:block dark:text-slate-200">
                       {user.name}
                     </span>

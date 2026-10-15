@@ -26,6 +26,7 @@ export default defineConfig({
           name: 'unit',
           include: [
             'apps/api/src/**/*.test.ts',
+            'apps/web/src/**/*.test.ts',
             'packages/integrations/src/**/*.test.ts',
             'packages/agent-core/src/**/*.test.ts',
           ],

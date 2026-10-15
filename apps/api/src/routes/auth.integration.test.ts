@@ -19,6 +19,21 @@ import {
   uniqueEmail,
 } from '../test-utils.js';
 
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+function avatarMultipartBody(boundary: string): Buffer {
+  return Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="avatar"; filename="avatar.png"\r\nContent-Type: image/png\r\n\r\n`,
+    ),
+    PNG_1X1,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+}
+
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -146,5 +161,32 @@ describe('auth lifecycle', () => {
     expect(ws.map((w) => w.name).sort()).toEqual(['My workspace', 'Personal workspace']);
     const created = ws.find((w) => w.id === wsId);
     expect(created?.role).toBe('owner');
+  });
+
+  it('serves an uploaded avatar for cross-origin embedding', async () => {
+    const { cookie } = await registerVerifyLogin(app);
+    const boundary = '----avatar-test-boundary';
+    const upload = await app.inject(
+      authed(cookie, {
+        method: 'POST',
+        url: '/api/v1/users/me/avatar',
+        headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+        payload: avatarMultipartBody(boundary),
+      }),
+    );
+    expect(upload.statusCode).toBe(200);
+    expect(upload.json().user.avatarUrl).toBe('/api/v1/users/me/avatar');
+
+    const image = await app.inject(
+      authed(cookie, {
+        method: 'GET',
+        url: '/api/v1/users/me/avatar',
+        headers: { origin: 'https://brandforge-tan.vercel.app' },
+      }),
+    );
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toMatch(/^image\/png/);
+    expect(image.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(image.headers['cache-control']).toBe('private, no-store');
   });
 });

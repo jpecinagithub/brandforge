@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 interface AvatarProps {
   name: string;
   src?: string | null;
@@ -18,9 +20,18 @@ function initials(name: string): string {
 }
 
 export function Avatar({ name, src, size = 'md', className = '' }: AvatarProps) {
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const cls = `flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 font-semibold text-white ring-2 ring-white/20 ${sizes[size]} ${className}`;
-  if (src) {
-    return <img src={src} alt={name} className={cls + ' object-cover'} />;
+  if (src && src !== failedSrc) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className={cls + ' object-cover'}
+        decoding="async"
+        onError={() => setFailedSrc(src)}
+      />
+    );
   }
   return (
     <div className={cls} aria-label={name}>

@@ -84,12 +84,17 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     }
     const detected = detectImage(buf);
     return reply
+      // The SPA and API use different origins in production. Helmet's default
+      // same-origin CORP header would otherwise make the browser discard this
+      // authenticated image response.
+      .header('cross-origin-resource-policy', 'cross-origin')
       .header('content-type', detected?.mime ?? 'application/octet-stream')
-      .header('cache-control', 'private, max-age=3600')
+      .header('cache-control', 'private, no-store')
       .send(buf);
   });
 
-  app.post(`${prefix}/me/avatar`, { preHandler: [app.authenticate] }, async (request, reply) => {    const req = request as Authed;
+  app.post(`${prefix}/me/avatar`, { preHandler: [app.authenticate] }, async (request, reply) => {
+    const req = request as Authed;
     const file = await request.file();
     if (!file) return sendError(reply, 400, 'BAD_REQUEST', 'No file uploaded');
     const buf = await file.toBuffer();

@@ -49,6 +49,13 @@ export function apiUrl(path: string): string {
   return `${baseUrl}${normalizedPath}`;
 }
 
+/** Resolve API-backed media while preserving browser-native and absolute URLs. */
+export function mediaUrl(path?: string | null): string | undefined {
+  if (!path) return undefined;
+  if (/^(?:https?:|data:|blob:)/i.test(path)) return path;
+  return apiUrl(path);
+}
+
 /**
  * Thin fetch wrapper for the BrandForge API.
  * - Cookie session (`bf_session`), so `credentials: 'include'` is always sent.
@@ -90,6 +97,5 @@ export const del = <T>(path: string, data?: unknown) =>
 
 /** Asset URLs come back as `/api/v1/assets/:id` — prefix with the API base URL. */
 export function assetUrl(asset: Asset): string {
-  if (asset.url.startsWith('http')) return asset.url;
-  return apiUrl(asset.url);
+  return mediaUrl(asset.url) ?? '';
 }

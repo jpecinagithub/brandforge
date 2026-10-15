@@ -5,7 +5,7 @@ import { Avatar, Button, Card, CardContent, CardDescription, CardHeader, CardTit
 import { Camera, Trash2, MonitorSmartphone } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme, Theme } from '@/context/ThemeContext';
-import { del, get, patch, post } from '@/lib/api';
+import { del, get, mediaUrl, patch, post } from '@/lib/api';
 import type { Session, User } from '@/lib/types';
 
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
@@ -135,7 +135,7 @@ export function Profile() {
 
       <Section title={t('profile.personalInfo')}>
         <div className="flex items-center gap-4">
-          <Avatar name={user.name} src={user.avatarUrl} size="lg" />
+          <Avatar name={user.name} src={mediaUrl(user.avatarUrl)} size="lg" />
           <div>
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
               {avatarUploading ? <Spinner size="sm" /> : <Camera size={15} />}
