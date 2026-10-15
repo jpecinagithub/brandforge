@@ -1,5 +1,5 @@
 {
-  "description": "BrandForge AI — agentic SaaS platform for AI-driven marketing and branding (Phases 1-2: foundation + auth)",
+  "description": "BrandForge AI — agentic SaaS platform for AI-driven marketing and branding",
   "engines": {
     "node": ">=20"
   },

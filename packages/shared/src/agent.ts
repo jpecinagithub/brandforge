@@ -1,5 +1,5 @@
 /**
- * @brandforge/shared — Phase 3 agent contracts.
+ * @brandforge/shared — agent contracts.
  *
  * Single source of truth for the agent orchestrator shapes shared by
  * @brandforge/agent-core (orchestrator + tools), apps/api (routes + SSE),
@@ -46,7 +46,7 @@ export const TOOL_CATEGORIES = ['read', 'write', 'generate', 'publish'] as const
 export const ToolCategorySchema = z.enum(TOOL_CATEGORIES);
 export type ToolCategory = z.infer<typeof ToolCategorySchema>;
 
-/** The 13 tools of the Phase 3 registry (spec §9). Names are stable API. */
+/** The 13 tools of the agent registry. Names are stable API. */
 export const TOOL_NAMES = [
   'create_campaign',
   'update_campaign',

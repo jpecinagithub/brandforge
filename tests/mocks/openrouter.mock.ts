@@ -1,5 +1,5 @@
 /**
- * TEST DOUBLE — Phase 3 stub, never billed.
+ * TEST DOUBLE — never billed and never calls an external provider.
  *
  * A fake OpenRouterClient for tests that need an "AI" collaborator without
  * touching the network. It returns a canned echo reply; it never performs

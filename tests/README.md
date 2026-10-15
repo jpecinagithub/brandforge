@@ -1,4 +1,4 @@
-# BrandForge tests (Phases 1–2)
+# BrandForge tests
 
 Three layers. All of them run against throwaway resources — never the dev
 `brandforge` database, never a real inbox, never a real AI provider.
@@ -15,7 +15,7 @@ Fast (<10s), no I/O:
 | `apps/api/src/authz.test.ts` | `roleAtLeast` ordering `viewer < editor < owner`, null → false |
 | `apps/api/src/schemas.test.ts` | zod rejections: weak passwords, bad emails, blank names, oversized chat input |
 | `apps/api/src/test-mail.test.ts` | quoted-printable token extraction (regression test — see below) |
-| `packages/integrations/src/openrouter-stub.test.ts` | Phase-3 stub: `chat()` throws `NotImplementedError`, never calls the network |
+| `packages/integrations/src/openrouter.test.ts` | OpenRouter client, retries, model routing, image responses and no-network behavior when unconfigured |
 
 ## 2. Integration — `npm run test:integration` (vitest project `integration`)
 
@@ -37,7 +37,8 @@ The vitest config injects `DATABASE_URL` (→ `brandforge_test`), `MAILDIR_PATH=
 | `apps/api/src/routes/auth.integration.test.ts` | register → verify (token from maildir) → login (cookie) → me → logout → 401; unverified login 403; wrong password 401; weak/bad/duplicate registration; UUID guard 400 |
 | `apps/api/src/routes/recovery.integration.test.ts` | forgot-password neutral 200 for unknown emails (sends nothing); reset flow; bogus/reused token 400; reset revokes all sessions |
 | `apps/api/src/routes/demo.integration.test.ts` | demo mints isolated user+workspace, seeds "Café Aroma — Christmas Campaign", demos can't see each other's (or real users') projects (404) |
-| `apps/api/src/routes/projects.integration.test.ts` | project → campaign → brand kit → **chat stub** (`notice === 'AI_NOT_CONFIGURED'`, both messages persisted, **zero external HTTP calls**); favorite toggle; asset upload; delete; non-member 404 |
+| `apps/api/src/routes/projects.integration.test.ts` | project → campaign → brand kit → safe unconfigured-agent fallback; favorite toggle; asset upload; delete; non-member 404 |
+| `apps/api/src/routes/agent.integration.test.ts` | durable agent runs, quotas, approvals, cancellation, events and configured/unconfigured paths |
 | `apps/api/src/routes/ratelimit.integration.test.ts` | 21 rapid logins → 429 `RATE_LIMITED` on the 21st |
 
 Run everything: `npm test` (= unit + integration).
@@ -54,10 +55,9 @@ a naive regex glues the `3D` onto the token and verification fails with `INVALID
 
 ### The OpenRouter mock
 
-`tests/mocks/openrouter.mock.ts` is a **TEST DOUBLE — Phase 3 stub, never billed**: a fake
-`OpenRouterClient` returning a canned echo reply. Phase 1–2 code never calls any AI provider;
-`packages/integrations` only contains the stub that throws `NotImplementedError`, and the
-integration suite additionally replaces global `fetch` with a throwing recorder
+`tests/mocks/openrouter.mock.ts` is a **TEST DOUBLE, never billed**: a fake
+`OpenRouterClient` returning a canned reply. The integration suite additionally
+replaces global `fetch` with a throwing recorder
 (`tests/setup/no-network.ts`) — any external HTTP attempt fails the run loudly.
 
 ## 3. E2E — `npm run test:e2e` (Playwright, Chromium headless)
@@ -78,21 +78,20 @@ npm run test:e2e
 
 | Spec | Covers |
 |---|---|
-| `tests/e2e/demo.spec.ts` | "Try Demo — No registration required" → `/app`, demo banner, Café Aroma project, open workspace, chat shows the AI_NOT_CONFIGURED notice; sending a message gets the honest stub reply |
+| `tests/e2e/demo.spec.ts` | "Try Demo — No registration required" → `/app`, demo banner, Café Aroma project and safe unavailable-agent fallback |
 | `tests/e2e/auth.spec.ts` | register → "Check your email" → verify via maildir token → login → New Campaign modal creates a project → logout → login again |
 | `tests/e2e/projects.spec.ts` | (demo session cookie) create project → favorite → create campaign → edit brand kit name → upload avatar PNG → delete project |
-| `tests/e2e/agent-chat.spec.ts` | Phase-3 agentic chat UI: POST /messages returning a canned `run` (routed), scriptable `EventSource` mock emitting contract-shaped SSE frames — progress card streams steps/tools/usage, approval gate, cancel, stream-error → automatic API polling, active-run restoration after reopen, runs history list + step-detail modal (mobile viewport). Real backend only for auth/project/conversation. See the spec header for the full strategy rationale. |
+| `tests/e2e/agent-chat.spec.ts` | Agentic chat UI: routed run creation and scriptable SSE events covering steps, tools, usage, approval, cancellation, polling fallback, restoration after reopen and run history |
 
-### Agent-chat E2E strategy (approach b)
+### Agent-chat E2E strategy
 
-The Phase-3 agent endpoints were built in parallel with the frontend, so
-`agent-chat.spec.ts` does not assert real backend behaviour. It routes
+`agent-chat.spec.ts` isolates the realtime UI contract. It routes
 `POST /api/v1/conversations/{id}/messages` to a canned `{message, run}` shaped
 like the `AgentRun` contract, and replaces `window.EventSource` (via
 `page.addInitScript`) with a scriptable mock emitting the contract's SSE frames
 (`{id, runId, seq, type, payload, createdAt}`). Everything else — demo auth
 cookie, project creation, the GET conversation reload after `run.finished` —
-goes through the real test API. The honest `AI_NOT_CONFIGURED` stub path stays
+goes through the real test API. The safe `AI_NOT_CONFIGURED` fallback stays
 covered against the real backend in `demo.spec.ts`.
 
 ### If `/tmp` was wiped (VM restart)

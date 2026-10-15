@@ -1,5 +1,5 @@
 /**
- * @brandforge/agent-core — Phase 3 agentic engine.
+ * @brandforge/agent-core — agentic engine.
  *
  * Public surface: orchestrator, planner, tool registry + the 13 tools,
  * roles, memory store, state machine and all shared type contracts.

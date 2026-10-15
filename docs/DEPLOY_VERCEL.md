@@ -1,14 +1,13 @@
 # Deploy — Vercel (frontend)
 
-> **For:** Jon, clicking in the Vercel dashboard himself.
-> **Standing rule:** the agent NEVER touches Vercel — no imports, no env vars, no
-> deploys. Every step below is yours.
+> **Scope:** static frontend deployment. Production data, OpenRouter credentials
+> and agent execution stay on Oracle.
 
 The frontend (`apps/web`) is a static SPA. The backend already runs on Oracle and
 is exposed at `https://jpecina.duckdns.org/brandforge/api` (see
 `docs/DEPLOY_ORACLE.md` — do that first, then come back here).
 
-## Steps
+## Initial project setup
 
 1. **Open the Vercel dashboard** → https://vercel.com → *Add New…* → *Project*.
 2. **Import** the GitHub repo **`jpecinagithub/brandforge`** (grant access if asked).
@@ -23,10 +22,11 @@ is exposed at `https://jpecina.duckdns.org/brandforge/api` (see
    
    > ⚠️ Vite bakes env vars in at **build time**. If you change `VITE_API_URL`
    > later, you must **redeploy** for it to take effect.
-5. Click **Deploy**. Wait for the build to succeed.
+5. Click **Deploy** and wait for the build to succeed. Once linked, pushes to
+   `main` create production deployments automatically through the Git integration.
 6. **Enable Web Analytics:** the code already includes `@vercel/analytics`.
    In the project dashboard go to the **Analytics** tab → **Enable**.
-   (No code change needed — the owner enables it in the dashboard, per standing rule.)
+   No code change is needed.
 7. **Smoke test** the deployed URL:
    - The landing page loads (EN default; ES toggle works).
    - Sign in works against the Oracle API (check the browser devtools network tab:
@@ -38,11 +38,13 @@ is exposed at `https://jpecina.duckdns.org/brandforge/api` (see
    Oracle `.env` and restart the api container:
    `docker compose -f infrastructure/docker/docker-compose.yml up -d api`.
 
-## What the agent does NOT do here
+## Release verification
 
-- No importing the repo, no setting env vars, no pressing Deploy, no enabling
-  Analytics. If any step fails, paste the Vercel build log here and we'll fix the
-  code — the clicking stays yours.
+- Confirm the intended Vercel project and production target before releasing.
+- Require a successful local build and tests before pushing `main`.
+- Inspect the resulting deployment until it reaches `Ready`.
+- Verify the production alias, authenticated workspace and browser console.
+- Never expose provider or backend secrets as `VITE_*` variables.
 
 ## Rollback on Vercel
 

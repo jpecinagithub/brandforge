@@ -1,5 +1,5 @@
 /**
- * @brandforge/integrations — Phase 3: OpenRouter client (SERVER-SIDE ONLY).
+ * @brandforge/integrations — OpenRouter client (SERVER-SIDE ONLY).
  *
  * HARD RULE: OpenRouter is called exclusively from the API/worker running on
  * Oracle. This package must never be bundled for the browser. The API key
@@ -15,7 +15,7 @@
 
 export class NotImplementedError extends Error {
   constructor(feature: string) {
-    super(`${feature} is not implemented yet (Phase 3)`);
+    super(`${feature} is not implemented by this integration.`);
     this.name = 'NotImplementedError';
   }
 }
@@ -56,7 +56,7 @@ export interface ORChatMessage {
   content: string;
 }
 
-/** Backwards-compatible alias for the Phase 1–2 ChatMessage shape. */
+/** Backwards-compatible alias for the original ChatMessage shape. */
 export type ChatMessage = ORChatMessage;
 
 export interface ChatOptions {

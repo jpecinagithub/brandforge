@@ -1,5 +1,5 @@
 /**
- * Environment readers for the agent engine. All Phase 3 limits are env-config
+ * Environment readers for the agent engine. All runtime limits are env-config
  * (ADR-0006); nothing is hardcoded in the UI or the orchestrator.
  */
 

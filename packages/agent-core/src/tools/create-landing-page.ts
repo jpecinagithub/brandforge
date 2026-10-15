@@ -43,7 +43,7 @@ export const createLandingPageTool: AgentTool<Args> = {
   name: 'create_landing_page',
   category: 'generate',
   description:
-    'Creates a landing page structure (template, headline, sections) stored as data; rendered by the visual builder in Phase 4.',
+    'Creates a landing page structure (template, headline, sections) stored as data and rendered in the workspace preview.',
   schema: argsSchema,
   estimateUsd: () => 0.01,
   async execute(ctx: ToolContext, args: Args): Promise<ToolResult> {

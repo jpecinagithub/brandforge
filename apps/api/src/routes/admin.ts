@@ -133,7 +133,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  // ---- Phase 3: agent observability (never exposes provider keys)
+  // ---- Agent observability (never exposes provider keys)
 
   app.get(`${prefix}/agent/runs`, guard, async (request, reply) => {
     const q = request.query as { page?: string; limit?: string; state?: string };

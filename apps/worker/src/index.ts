@@ -1,5 +1,5 @@
 /**
- * BrandForge background worker — Phase 3 agent run executor.
+ * BrandForge background worker — durable agent run executor.
  *
  * The `agent_runs` table IS the queue (ADR-0006): the worker claims pending
  * runs with SELECT ... FOR UPDATE SKIP LOCKED, heartbeats every 15 s, and

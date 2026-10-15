@@ -5,7 +5,7 @@ import { defineConfig, defineProject } from 'vitest/config';
  *
  * Two projects:
  *  - `unit`: fast, no I/O — pure helpers (argon2id, tokens, uuid guard, RBAC),
- *    zod schema rejections, and the Phase-3 OpenRouter stub. Target <30s.
+ *    Zod schema rejections and the OpenRouter client. Target <30s.
  *  - `integration`: Fastify `inject` against the `brandforge_test` Postgres DB
  *    (NEVER the dev `brandforge` DB). One file at a time (fileParallelism:
  *    false) because all files share the same DB and truncate it per test.

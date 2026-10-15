@@ -1,6 +1,6 @@
 # BrandForge AI — Architecture
 
-> Phases 1–3 (foundation + full auth + agentic engine). Last updated 2026-10-14.
+> Deployed functional beta. Last updated 2026-10-15.
 > Decisions live in `docs/adr/`; deployment in `docs/DEPLOY_ORACLE.md` / `docs/DEPLOY_VERCEL.md`.
 
 ## 1. System context (C4 L1)
@@ -26,7 +26,7 @@ runs it for his own clients and demos; end users sign up on the web app.
               │  ┌─────────┐  ┌──────────┐  ┌────────────┐   │
               │  │ Fastify │  │ Postgres │  │   Worker   │   │
               │  │ API     │─▶│   15     │◀─│ (job queue)│   │
-              │  │ :3013   │  │ (Docker) │  │ (Phase 3+) │   │
+              │  │ :3013   │  │ (Docker) │  │ agent runs │   │
               │  └────┬────┘  └──────────┘  └─────┬──────┘   │
               │       │                          │          │
               │       └───────── OpenRouter ──────┘          │
@@ -37,11 +37,11 @@ runs it for his own clients and demos; end users sign up on the web app.
 Key invariants:
 
 1. **The browser never talks to OpenRouter.** All inference goes through the API or
-   the worker (Phase 3). API keys live only in server `.env` / Docker secrets.
+   the worker. API keys live only in server `.env` / Docker secrets.
 2. **Backend port 3013 on 127.0.0.1 is reserved for BrandForge** on the Oracle host
    (nginx proxies `/brandforge/api/` → `127.0.0.1:3013`). Never bind 0.0.0.0 there.
-3. **Vercel is presentation only.** The owner deploys it himself; the agent never
-   touches Vercel (standing rule).
+3. **Vercel is presentation only.** Production data, provider credentials and
+   agent execution remain on Oracle.
 4. **All IP is original.** No copied designs, code, or assets (see ADR-0004).
 
 ## 2. Containers (C4 L2)
@@ -50,13 +50,13 @@ Key invariants:
 |---|---|---|---|---|
 | Web SPA | React 19 + TS + Vite, PWA | `apps/web/` | Vercel | Bilingual EN/ES (EN default); `@vercel/analytics` in code; footer “Developed by Jon Peciña Iturbe” |
 | API | Fastify + Node 24 | `apps/api/` | Oracle Docker, 127.0.0.1:3013 | Session-cookie auth, RBAC, rate limits, maildir/SMTP |
-| Worker | Node 24 job runner | `apps/worker/` | Oracle Docker | Claims `agent_runs` queue, executes the orchestrator (Phase 3) |
+| Worker | Node 24 job runner | `apps/worker/` | Oracle Docker | Claims the `agent_runs` queue and executes the orchestrator |
 | Database | Postgres 15 + Drizzle ORM | `packages/database/` | Oracle Docker volume | SQL-transparent migrations; seed script + demo assets |
 | Reverse proxy | nginx | Oracle `/etc/nginx/sites-enabled/mi-gps` | Oracle host | `/brandforge/api/` → API; see `infrastructure/nginx/` reference |
 
 Shared code: `packages/shared` (types/constants), `packages/ui` (UI primitives),
-`packages/agent-core` (Phase 3 agent orchestration — stub), `packages/integrations`
-(external providers — stub).
+`packages/agent-core` (orchestrator, planner and tools), `packages/agent-server`
+(server-side runtime and quotas) and `packages/integrations` (OpenRouter and model routing).
 
 ## 3. Request flows
 
@@ -119,7 +119,7 @@ Browser ──GET /brandforge/api/v1/assets/:id──▶ API: auth check → own
                                                 (never a direct static mount)
 ```
 
-Uploads: multipart → virus-scan hook point (Phase 3) → stored under
+Uploads: multipart → optional virus-scan hook point → stored under
 `STORAGE_PATH/<workspace-id>/…`. Demo seed PNGs are copied from
 `packages/database/seed-assets/*.png` into `STORAGE_PATH` by `npm run db:seed`
 (see `packages/database/seed-assets/README.md`).
@@ -137,7 +137,7 @@ Core tables in `packages/database/` (Drizzle schema; migrations are plain SQL):
 | `brands` | workspace_id, name, tagline/description (EN+ES JSON), colors, fonts, tone |
 | `campaigns` | brand_id, name, objective, concepts (JSON) |
 | `assets` | workspace_id, kind (logo/hero/post/poster), storage_key, width/height, demo flag |
-| `generations` | (Phase 3) workspace_id, prompt, model, status, cost tracking |
+| `agent_runs` and related tables | durable plans, steps, events, usage and cost tracking |
 | `audit_log` | append-only: who did what, when (admin/RGPD support) |
 
 Conventions: UUIDv7 PKs, `created_at/updated_at` everywhere, soft-delete for users,
@@ -152,28 +152,32 @@ hard-delete for expired demos, all user content scoped by `workspace_id`.
 | Capability | admin | user | demo |
 |---|---|---|---|
 | Manage own workspace/brands/campaigns/assets | ✓ | ✓ | ✓ (quota-capped, 24h) |
-| Generate with AI (Phase 3) | ✓ | ✓ | ✗ (or tiny fixed quota) |
+| Generate with AI | ✓ | ✓ | quota-capped |
 | View audit log | ✓ | own only | ✗ |
 | Manage users / promote admins | ✓ | ✗ | ✗ |
 | Export my data (RGPD) | ✓ | ✓ | n/a |
 | Delete my account (`DELETE /users/me`) | ✓ | ✓ | auto-expire |
 
 - **Rate limits** (per IP + per session; see `docs/SECURITY.md` for the table):
-  login 10/min, register 5/h, demo-create 3/h, password-reset 3/h, AI generate (Phase 3) 20/h.
+  login, registration, demo creation and password reset have dedicated limits;
+  agent execution is additionally protected by workspace quotas and budget caps.
 - **Mail:** maildir transport in dev/test (`.eml` files under `MAILDIR_PATH`), SMTP in
   production. No real emails in tests.
 - **Secrets:** only via env/Docker secrets; never in git, logs, or the browser bundle.
 - **RGPD:** `GET /users/me/export` and `DELETE /users/me` exist; admin hard-delete
   path documented in `docs/SECURITY.md`.
 
-## 6. What is stubbed for later phases (file pointers)
+## 6. Current capabilities and remaining product work
 
-| Phase | Capability | Stub location | Notes |
-|---|---|---|---|
-| 3 | AI generation (OpenRouter) | `packages/agent-core/`, `apps/worker/`, `packages/integrations/` | ✅ Implemented: orchestrator + 13 tools + model router + SSE; browser never calls OpenRouter; prompt-injection guardrails (see `docs/SECURITY.md` §6) |
-| 3 | File scan on upload | `apps/api/` upload handler | hook point documented, ClamAV optional |
-| 4 | Landing-page builder | `apps/web/` routes + `packages/database/seed-data/demo-cafe.json` → `landingExample` | `demo-cafe.json` already carries the static example structure |
-| 5 | Billing / teams / SSO | `apps/api/` billing module (not started) | — |
+| Capability | Status | Location / notes |
+|---|---|---|
+| AI generation | Implemented | Orchestrator, 13 tools, model routing, durable events and live progress |
+| Landing preview | Implemented | Agent-created versions render responsively inside the workspace |
+| Campaign favorites | Implemented | Campaigns can be starred from the dashboard or project workspace |
+| Campaign export | Pending | The workspace currently presents a disabled export action |
+| Public landing publishing | Pending | Previews require an authenticated workspace session |
+| Billing / teams / SSO | Roadmap | Not part of the current functional beta |
+| File malware scanning | Optional hardening | Upload validation exists; ClamAV integration is not enabled by default |
 
 ## 7. Environments
 

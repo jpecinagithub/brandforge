@@ -4,7 +4,7 @@
  * Tool / context / port interfaces the orchestrator and the backend program
  * against. The OpenRouter shapes below (ORChatMessage … ModelRouter) mirror
  * EXACTLY the interfaces @brandforge/integrations is implementing in parallel
- * (see the Phase 3 assignment). They are declared here structurally so that
+ * They are declared here structurally so that
  * agent-core compiles and is unit-testable now; the real classes from
  * @brandforge/integrations are assignable to them without adaptation, at
  * which point these declarations can be re-exported from there.

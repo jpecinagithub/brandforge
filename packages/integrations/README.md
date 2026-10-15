@@ -1,6 +1,6 @@
 # @brandforge/integrations
 
-Phase 3: the real OpenRouter HTTP client. **Server-side only** — this package
+OpenRouter HTTP client and model router. **Server-side only** — this package
 must never be bundled for the browser.
 
 ## Hard rule

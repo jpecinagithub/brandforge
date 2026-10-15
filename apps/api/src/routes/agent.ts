@@ -1,5 +1,5 @@
 /**
- * Agent run routes — Phase 3.
+ * Agent run routes.
  *
  * POST   /api/v1/projects/:projectId/agent/runs        start a run (editor, 20/h per user)
  * GET    /api/v1/projects/:projectId/agent/runs        list runs (viewer, paginated)

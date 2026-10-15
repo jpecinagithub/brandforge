@@ -1,7 +1,7 @@
 # Security — BrandForge AI
 
-> Phases 1–2. Threat model: small SaaS, owner-operated; protect user accounts,
-> user content, and server secrets. Revisit before Phase 3 (AI generation).
+> Threat model for the deployed owner-operated SaaS: protect user accounts,
+> user content, agent execution and server secrets.
 
 ## 1. Secret handling
 
@@ -9,7 +9,7 @@
   logs, error responses, or the browser bundle.
 - `.env.example` documents every variable with placeholder values; the real
   `.env` is git-ignored and `0600` on Oracle.
-- API keys (OpenRouter, Phase 3) are server-side only — the browser **never**
+- API keys such as OpenRouter are server-side only — the browser **never**
   sees them and never calls OpenRouter directly.
 - If a secret leaks (chat, log, repo): rotate it immediately, then check
   `audit_log` for misuse. The owner pastes secrets himself; the agent only ever
@@ -43,14 +43,14 @@ carry `Retry-After`.
 | `POST /api/v1/auth/password-reset` | 3 | hour / email | silent success (no enumeration) |
 | `POST /api/v1/auth/verify-email` resend | 3 | hour / email | |
 | Mutating API (general) | 120 | minute / session | |
-| `POST /api/v1/generate/*` (Phase 3) | 20 | hour / user | demo workspaces: fixed tiny quota |
+| Agent-run creation | configured quota | workspace | enforced before provider calls |
 | Asset upload | 20 | hour / workspace | + size cap, type allowlist |
 
 ## 4. Session & cookie hardening
 
 - Opaque session id; only `token_hash` stored (ADR-0003).
 - Cookie flags: `HttpOnly; Secure; SameSite=Lax; Path=/`.
-- Sliding expiry (`SESSION_TTL_DAYS=30`); absolute cap recommended at Phase 3.
+- Sliding expiry (`SESSION_TTL_DAYS=30`) with server-side revocation.
 - `POST /api/v1/auth/logout-all` revokes every session for the user.
 - CSRF: `SameSite=Lax` + `Origin`/`Referer` check on state-changing requests.
 
@@ -68,10 +68,10 @@ carry `Retry-After`.
 - **Logs:** no passwords, tokens, or prompt content in logs; IPs retained per
   the documented retention in `apps/api`.
 
-## 6. Prompt-injection defense (Phase 3 placeholder)
+## 6. Prompt-injection defense
 
-When AI generation ships (OpenRouter via `apps/worker` + `packages/agent-core`),
-the following are **required before launch** — not optional hardening:
+AI generation runs through OpenRouter via `apps/worker` and
+`packages/agent-core`. The following controls are mandatory:
 
 1. **System/user separation:** untrusted content (brand docs, web snippets,
    uploads) is never concatenated into system instructions; it travels in a
@@ -91,7 +91,7 @@ the following are **required before launch** — not optional hardening:
   (nginx `client_max_body_size 30m`; app-level cap lower per endpoint).
 - Files stored under `STORAGE_PATH/<workspace-id>/…`; served only through the
   API after auth + ownership check — never a direct static mount.
-- Virus-scan hook point on upload (Phase 3; ClamAV optional on Oracle).
+- Virus-scan hook point on upload; ClamAV remains an optional Oracle hardening measure.
 
 ## 8. Dependency & container hygiene
 

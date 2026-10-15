@@ -2,12 +2,12 @@
 
 > **For:** Jon, running commands himself on his Oracle server.
 > **Scope:** backend only (Fastify API + Postgres + worker in Docker). The frontend
-> deploys on Vercel — see `docs/DEPLOY_VERCEL.md`; the agent never touches Vercel.
+> deploys on Vercel — see `docs/DEPLOY_VERCEL.md`.
 >
 > Conventions used below (standing rules):
 > - One paste-ready block per job. The **purpose comes before** the block.
 > - Shell label: **Oracle (`ubuntu@oracle`)** — every block runs there unless stated.
-> - The VM running this agent **cannot SSH out**, so every step is guided-hands.
+> - Run the commands from an authenticated Oracle shell or through the configured deployment automation.
 > - Backend port **3013** on **127.0.0.1** is reserved for BrandForge (Oracle's port
 >   3001 is already ERP3 — do not use it).
 > - `jpecina.duckdns.org` is served by the **`mi-gps`** nginx server block
@@ -74,7 +74,9 @@ SMTP_PASS=<contraseña>
 STORAGE_PATH=/data/brandforge/storage
 MAILDIR_PATH=/data/brandforge/maildir
 VITE_API_URL=https://jpecina.duckdns.org/brandforge/api
-# OPENROUTER_* : Phase 3 — leave empty for now.
+OPENROUTER_API_KEY=<server-side OpenRouter key>
+# Optional model overrides: OPENROUTER_TEXT_MODEL, OPENROUTER_IMAGE_MODEL,
+# OPENROUTER_VISION_MODEL and OPENROUTER_REVIEW_MODEL.
 ```
 
 > Keep this `.env` only on the server (0600). It is git-ignored.

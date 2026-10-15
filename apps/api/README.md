@@ -1,6 +1,6 @@
 # @brandforge/api
 
-BrandForge REST API — Fastify + TypeScript. Phases 1–2: foundation + auth.
+BrandForge REST API — Fastify + TypeScript, authentication and agent orchestration.
 Base path `/api/v1`, session cookie `bf_session`.
 
 ## Run
@@ -49,12 +49,14 @@ See root `.env.example` for the full list. Key vars:
 
 Global: 300 req / 15 min per IP. Tighter per route: login 20/15min, register 10/hour, demo 10/hour, resend-verification 10/hour, forgot-password 5/hour.
 
-## Chat (honest stub)
+## Agent chat
 
-`POST /api/v1/conversations/:id/messages` saves the user message and a fixed
-assistant reply: *"AI generation is not configured yet in this build (Phase 3)…"*
-with `notice: 'AI_NOT_CONFIGURED'`. No model is called. Phase 3 wires the real
-orchestrator (`@brandforge/agent-core`) + OpenRouter (`@brandforge/integrations`).
+`POST /api/v1/conversations/:id/messages` saves the user message and starts a
+durable agent run when OpenRouter is configured and the workspace has quota.
+The worker executes the plan with `@brandforge/agent-core` and streams persisted
+progress events to the frontend. If the provider is unavailable, the endpoint
+returns a safe `AI_NOT_CONFIGURED` or `AI_QUOTA_UNAVAILABLE` notice without
+discarding the user's message.
 
 ## Admin
 
@@ -81,6 +83,6 @@ src/
   email.ts        — nodemailer, maildir/smtp, verify/reset/welcome templates
   storage.ts      — StorageAdapter + LocalDiskStorage (S3-ready interface)
   routes/         — health, auth, users, workspaces, projects, campaigns,
-                    brandkits, conversations (stub), assets, admin
+                    brandkits, conversations, agent runs, landing pages, assets, admin
   scripts/        — promote-admin, cleanup-demos
 ```

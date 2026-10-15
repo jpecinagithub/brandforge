@@ -7,7 +7,7 @@
  *
  * Reads DATABASE_URL and STORAGE_PATH from the environment.
  *
- * FUTURE: run this on a cron (e.g. daily) via the Phase 5 worker.
+ * Run this on a daily scheduler in production.
  */
 import 'dotenv/config';
 import { and, eq, lt, notInArray } from 'drizzle-orm';

@@ -245,7 +245,7 @@ export const UpsertBrandKitInputSchema = z.object({
 export type UpsertBrandKitInput = z.infer<typeof UpsertBrandKitInputSchema>;
 
 // ---------------------------------------------------------------------------
-// Conversations / messages (Phase 2: honest chat stub)
+// Conversations / messages
 // ---------------------------------------------------------------------------
 export const MessageRoleSchema = z.enum(['user', 'assistant', 'system']);
 export type MessageRole = z.infer<typeof MessageRoleSchema>;
@@ -316,6 +316,6 @@ export type SetAdminInput = z.infer<typeof SetAdminInputSchema>;
 export type Envelope<T extends object> = T;
 
 // ---------------------------------------------------------------------------
-// Phase 3 agent contracts (run states, tools, plans, events, DTOs)
+// Agent contracts (run states, tools, plans, events, DTOs)
 // ---------------------------------------------------------------------------
 export * from "./agent.js";

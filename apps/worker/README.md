@@ -1,6 +1,6 @@
 # @brandforge/worker
 
-Background job runner — **Phase 3 agent run executor** (ADR-0006).
+Background job runner for durable agent execution (ADR-0006).
 
 `src/index.ts` runs the claim loop:
 

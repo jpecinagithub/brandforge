@@ -97,7 +97,7 @@ export function welcomeEmail(to: string, name: string): EmailContent {
     html: brandShell(
       'Welcome to BrandForge',
       `<h2 style="color:#1E3D2F;margin:0 0 12px;">Welcome aboard, ${escapeHtml(name)}!</h2>
-<p style="color:#333;line-height:1.6;">Your account is verified. Create a workspace, start a project, and build your brand kit &mdash; campaigns, assets and an AI design assistant (coming in Phase 3) are all waiting.</p>
+<p style="color:#333;line-height:1.6;">Your account is verified. Create a workspace, start a project, and use the AI agent to build campaigns, brand kits, assets and landing pages.</p>
 ${btn(config.frontendUrl, 'Open BrandForge')}`,
     ),
     text: `Welcome aboard, ${name}!\n\nYour BrandForge account is verified. Open ${config.frontendUrl} to get started.\n`,

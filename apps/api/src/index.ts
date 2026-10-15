@@ -64,7 +64,7 @@ export async function buildApp() {
   if (!config.isProduction) {
     await app.register(swagger, {
       openapi: {
-        info: { title: 'BrandForge API', version: '0.1.0', description: 'Phase 3: agentic engine' },
+        info: { title: 'BrandForge API', version: '0.1.0', description: 'Agentic marketing and branding engine' },
       },
     });
     await app.register(swaggerUi, { routePrefix: '/docs' });

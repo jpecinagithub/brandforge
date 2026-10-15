@@ -1,6 +1,6 @@
 # @brandforge/agent-core
 
-Phase 3 agentic engine: orchestrator, planner, tool registry and the 13
+Production agentic engine: orchestrator, planner, tool registry and the 13
 agent tools. This package executes AI through `@brandforge/integrations`
 (OpenRouter, server-side only).
 
@@ -22,8 +22,8 @@ agent tools. This package executes AI through `@brandforge/integrations`
 ## Notes for integrators
 
 - The OpenRouter shapes in `src/types.ts` (`OpenRouterClient`,
-  `ModelRouter`, …) mirror the interfaces `@brandforge/integrations` is
-  implementing; they are structurally identical, so the real classes are
+  `ModelRouter`, …) mirror the implemented interfaces in `@brandforge/integrations`;
+  they are structurally identical, so the real classes are
   assignable without adaptation.
 - `StoragePort.saveFile` is expected to persist the asset row and return its
   `assetId`; tools additionally set `projectId` on that row to guarantee

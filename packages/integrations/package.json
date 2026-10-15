@@ -1,5 +1,5 @@
 {
-  "description": "BrandForge external integrations — OpenRouter client (server-side only). Chat, image generation, /models capability lookup and ModelRouter for Phase 3.",
+  "description": "BrandForge server-side OpenRouter client, image generation, model discovery and routing",
   "exports": {
     ".": {
       "import": "./dist/index.js",

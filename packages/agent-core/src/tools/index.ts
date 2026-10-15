@@ -1,5 +1,5 @@
 /**
- * The 13 Phase 3 agent tools, registered in one place.
+ * The 13 agent tools, registered in one place.
  */
 import type { AgentTool } from '../types.js';
 import { createToolRegistry, ToolNotFoundError } from './registry.js';
@@ -56,7 +56,7 @@ export const allTools: AgentTool[] = [
   reviewCampaignTool,
 ];
 
-/** Builds the default registry with the 13 Phase 3 tools. */
+/** Builds the default registry with the 13 agent tools. */
 export function createDefaultRegistry(): ToolRegistry {
   return createToolRegistry(allTools);
 }

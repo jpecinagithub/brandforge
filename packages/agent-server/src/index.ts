@@ -1,5 +1,5 @@
 /**
- * @brandforge/agent-server — server-side engine for the Phase 3 agent.
+ * @brandforge/agent-server — server-side agent engine.
  *
  * This package owns everything the orchestrator (@brandforge/agent-core)
  * needs from the server: the commercial credit ledger, workspace quotas,

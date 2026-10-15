@@ -41,7 +41,7 @@ export const config = {
     pass: process.env.SMTP_PASS ?? '',
   },
   isProduction: (process.env.NODE_ENV ?? 'development') === 'production',
-  // Phase 3 agent engine tunables (all limits env-config per ADR-0006).
+  // Agent engine tunables (all limits env-config per ADR-0006).
   agent: readAgentConfig(),
   quotaPlans: readQuotaPlanDefaults(),
   // OpenRouter is server-side only. The integrations package owns the typed

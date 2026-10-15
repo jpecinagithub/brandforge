@@ -1,5 +1,5 @@
 /**
- * Registry of the 13 Phase 3 agent tools. `get` throws ToolNotFoundError for
+ * Registry of the 13 agent tools. `get` throws ToolNotFoundError for
  * unknown names so typos in plans fail loudly instead of silently.
  */
 import type { ToolName } from '@brandforge/shared';

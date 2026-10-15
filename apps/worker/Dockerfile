@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# BrandForge worker image — Phase 3 agent run executor (ADR-0006).
+# BrandForge worker image — durable agent run executor (ADR-0006).
 # Based on apps/api/Dockerfile; no HTTP port, runs the claim loop.
 # ---------- build ----------
 FROM node:24-slim AS build

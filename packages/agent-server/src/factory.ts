@@ -78,7 +78,7 @@ export function buildOrchestrator(db: Db, opts: BuildOrchestratorOpts): Orchestr
       makeMemory: () => makeMemory(db),
     },
     // Events are persisted by the per-run port (the SSE endpoint tails
-    // agent_events); there is no pub/sub fan-out in Phase 3, so the global
+    // agent_events); there is no pub/sub fan-out yet, so the global
     // broadcast is intentionally a no-op. Persisting here as well would
     // duplicate every event row.
     emitGlobal: async () => {},

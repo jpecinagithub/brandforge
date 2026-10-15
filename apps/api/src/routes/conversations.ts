@@ -4,9 +4,9 @@
  * GET  /api/v1/projects/:projectId/conversation → {conversation, messages, agent}
  * POST /api/v1/conversations/:id/messages {content}
  *      → saves the user message. When OpenRouter is configured AND the
- *        workspace quota allows it (Phase 3), starts an agent run and returns
+ *        workspace quota allows it, starts an agent run and returns
  *        {message, run}; the orchestrator appends the assistant reply to the
- *        conversation on completion. Otherwise keeps the honest Phase-2 stub
+ *        conversation on completion. Otherwise uses a safe persisted fallback
  *        (no model is called; nothing is hallucinated).
  */
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -102,7 +102,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       .returning();
     const { ip, userAgent } = requestMeta(request);
 
-    // Phase 3: real agent run when the server can call OpenRouter and the
+    // Start a real agent run when the server can call OpenRouter and the
     // workspace quota allows it. Lazy import keeps agent-server out of the
     // module graph until it is actually needed.
     const agentServer = await import('@brandforge/agent-server');

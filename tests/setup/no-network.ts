@@ -5,7 +5,7 @@
  * throws, so any code path that tried to reach a real provider (e.g. a
  * half-wired OpenRouter client) fails loudly instead of billing or hanging.
  *
- * Tests assert on `fetchCalls()` — the Phase-2 chat stub must complete with
+ * Tests assert on `fetchCalls()` — the unavailable-provider fallback must complete with
  * zero recorded calls.
  */
 export interface FetchAttempt {

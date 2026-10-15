@@ -4,7 +4,7 @@
  * Conventions:
  * - Every table: `id uuid PK default gen_random_uuid()`, `created_at timestamptz default now()`.
  * - Mutable tables additionally carry `updated_at timestamptz` (maintained by the app on writes).
- * - Phase 3 tables: agent_runs (+ agent_steps, agent_tool_calls, agent_events),
+ * - Agent tables: agent_runs (+ agent_steps, agent_tool_calls, agent_events),
  *   model_usage, usage_quotas, credit_ledger, agent_memories — see ADR-0006.
  * - status columns are TEXT validated in app code against @brandforge/shared
  *   RUN_STATES (avoids enum churn in migrations).
@@ -240,7 +240,7 @@ export const landingPages = pgTable('landing_pages', {
 });
 
 // ---------------------------------------------------------------------------
-// Conversations (chat stub in Phase 2; real agent in Phase 3)
+// Conversations and agent-generated messages
 // ---------------------------------------------------------------------------
 export const conversations = pgTable('conversations', {
   id: uuid('id').primaryKey().defaultRandom(),

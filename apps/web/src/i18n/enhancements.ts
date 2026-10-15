@@ -1,5 +1,9 @@
 export const enEnhancements = {
+  admin: {
+    phase5Note: 'Manage users, access and agent activity from this panel.',
+  },
   dashboard: {
+    creditsHint: 'Token usage and cost are shown in the detail of each agent run.',
     noFavoritesDesc: 'Star a campaign to keep it close at hand here.',
   },
   agent: {
@@ -10,6 +14,8 @@ export const enEnhancements = {
     agentAvailable: 'Agent ready',
     agentUnavailable: 'The agent is temporarily unavailable.',
     agentQuotaUnavailable: 'This workspace has reached its AI allowance. Your message will still be saved.',
+    chatNotice: 'The agent is temporarily unavailable. Your messages will remain saved until the service is restored.',
+    chatReplyNotice: 'Fallback response — check the agent configuration to resume AI generation.',
     brandKitHint: 'These brand rules guide every campaign, visual and landing page.',
     landingTitle: 'Landing page studio',
     landingDescription: 'Review the pages created by the agent and test them at any screen size.',
@@ -24,13 +30,19 @@ export const enEnhancements = {
     landingRefresh: 'Refresh preview',
     landingLoadError: 'The preview could not be loaded.',
     landingPagesLabel: 'Versions',
+    exportTooltip: 'Campaign export is not available yet.',
+    landingPlaceholderDesc: 'Create landing pages from the agent chat and preview every version here.',
     favoriteCampaign: 'Add {{name}} to favorites',
     unfavoriteCampaign: 'Remove {{name}} from favorites',
   },
 } as const;
 
 export const esEnhancements = {
+  admin: {
+    phase5Note: 'Gestiona usuarios, accesos y actividad del agente desde este panel.',
+  },
   dashboard: {
+    creditsHint: 'El uso de tokens y el coste se muestran en el detalle de cada ejecución del agente.',
     noFavoritesDesc: 'Marca una campaña con la estrella para tenerla siempre a mano aquí.',
   },
   agent: {
@@ -41,6 +53,8 @@ export const esEnhancements = {
     agentAvailable: 'Agente preparado',
     agentUnavailable: 'El agente no está disponible temporalmente.',
     agentQuotaUnavailable: 'Este espacio ha agotado su cuota de IA. Tu mensaje se seguirá guardando.',
+    chatNotice: 'El agente no está disponible temporalmente. Tus mensajes quedarán guardados hasta que se restablezca el servicio.',
+    chatReplyNotice: 'Respuesta de respaldo — revisa la configuración del agente para reanudar la generación con IA.',
     brandKitHint: 'Estas reglas de marca guían cada campaña, pieza visual y landing.',
     landingTitle: 'Estudio de landing pages',
     landingDescription: 'Revisa las páginas creadas por el agente y pruébalas en cualquier tamaño de pantalla.',
@@ -55,6 +69,8 @@ export const esEnhancements = {
     landingRefresh: 'Actualizar vista previa',
     landingLoadError: 'No se ha podido cargar la vista previa.',
     landingPagesLabel: 'Versiones',
+    exportTooltip: 'La exportación de campañas todavía no está disponible.',
+    landingPlaceholderDesc: 'Crea landings desde el chat del agente y previsualiza aquí cada versión.',
     favoriteCampaign: 'Añadir {{name}} a favoritos',
     unfavoriteCampaign: 'Quitar {{name}} de favoritos',
   },
