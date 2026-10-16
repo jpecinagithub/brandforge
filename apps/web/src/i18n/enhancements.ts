@@ -1,4 +1,7 @@
 export const enEnhancements = {
+  common: {
+    appUpdated: 'BrandForge has been updated to the latest version.',
+  },
   admin: {
     phase5Note: 'Manage users, access and agent activity from this panel.',
   },
@@ -110,6 +113,9 @@ export const enEnhancements = {
 } as const;
 
 export const esEnhancements = {
+  common: {
+    appUpdated: 'BrandForge se ha actualizado a la última versión.',
+  },
   admin: {
     phase5Note: 'Gestiona usuarios, accesos y actividad del agente desde este panel.',
   },

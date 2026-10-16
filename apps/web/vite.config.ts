@@ -21,11 +21,22 @@ const manifestIcons = pngIconsReady
   : [{ src: 'icons/fallback-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }];
 
 export default defineConfig({
+  define: {
+    __APP_BUILD_ID__: JSON.stringify(
+      process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ??
+        process.env.GITHUB_SHA?.slice(0, 12) ??
+        'local',
+    ),
+  },
   plugins: [
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registration is handled in src/pwa.ts. The virtual register includes
+      // Workbox's activation listener, so open tabs reload when a deployment
+      // takes control instead of continuing to run an obsolete JS bundle.
+      injectRegister: false,
       includeAssets: ['icons/fallback-icon.svg'],
       manifest: {
         name: 'BrandForge AI',
@@ -39,6 +50,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
