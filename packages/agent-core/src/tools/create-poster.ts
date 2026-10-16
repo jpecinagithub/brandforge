@@ -13,10 +13,15 @@ import type { AgentTool, ToolContext, ToolResult } from '../types.js';
 import { assertProjectAccess, parseToolArgs } from './helpers.js';
 
 const IMAGE_ESTIMATE_USD = 0.04;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const argsSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-  subtitle: z.string().trim().max(300).optional(),
+  title: z.string().trim().min(1).max(200).refine((value) => !UUID_RE.test(value), {
+    message: 'title must be customer-facing copy, not an internal identifier',
+  }),
+  subtitle: z.string().trim().max(300).refine((value) => !UUID_RE.test(value), {
+    message: 'subtitle must be customer-facing copy, not an internal identifier',
+  }).optional(),
   imagePrompt: z.string().trim().min(1).max(2000).optional(),
   // Accept any string: resolved to a UUID below, falling back to the
   // project's default brand kit when missing/invalid. The LLM sometimes
@@ -38,7 +43,6 @@ export const createPosterTool: AgentTool<Args> = {
     await assertProjectAccess(ctx);
 
     let kit: { colors: unknown; fonts: unknown; tone: string } | null = null;
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     // Only look up when it's a plausible UUID; otherwise fall through to the
     // project's default brand kit (the LLM sometimes hallucinates IDs).
     if (a.brandKitId && UUID_RE.test(a.brandKitId)) {

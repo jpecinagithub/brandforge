@@ -23,6 +23,8 @@ interface PreviewSchema {
   sections: PreviewSection[];
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function text(value: unknown, fallback = ''): string {
   if (typeof value === 'string') return value.trim();
   if (value && typeof value === 'object') {
@@ -57,7 +59,7 @@ export function verifyLandingSchema(value: unknown) {
   const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   const sections = Array.isArray(raw.sections) ? raw.sections : [];
   const checks = {
-    headline: text(raw.headline).length >= 3,
+    headline: text(raw.headline).length >= 3 && !UUID_RE.test(text(raw.headline)),
     subheadline: text(raw.subheadline).length >= 5,
     callToAction: text(raw.cta).length >= 2,
     sections: sections.length > 0 && sections.every((item) => {

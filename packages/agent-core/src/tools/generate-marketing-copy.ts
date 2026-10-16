@@ -33,7 +33,7 @@ export const generateMarketingCopyTool: AgentTool<Args> = {
   name: 'generate_marketing_copy',
   category: 'generate',
   description:
-    'Generates marketing copy variants (headline, body, CTA) for the given channels and stores them as a design document.',
+    'Generates marketing copy variants and returns the first variant as top-level headline, body and cta fields for dependent creative tools.',
   schema: argsSchema,
   estimateUsd: (args: Args) => 0.01 + 0.002 * (args.channels?.length ?? 1),
   async execute(ctx: ToolContext, args: Args): Promise<ToolResult> {
@@ -98,10 +98,18 @@ export const generateMarketingCopyTool: AgentTool<Args> = {
       })
       .returning();
 
+    const primary = variants[0];
     return {
       ok: true,
       summary: `Generated ${variants.length} copy variant(s) for "${a.topic}".`,
-      data: { designDocumentId: doc.id, variants, model },
+      data: {
+        designDocumentId: doc.id,
+        variants,
+        headline: primary?.headline,
+        body: primary?.body,
+        cta: primary?.cta,
+        model,
+      },
       usage: result.usage,
       costUsd: result.usage.costUsd,
     };

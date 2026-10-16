@@ -10,6 +10,8 @@ import { landingPages } from '@brandforge/database';
 import type { AgentTool, ToolContext, ToolResult } from '../types.js';
 import { assertProjectAccess, parseToolArgs } from './helpers.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const sectionSchema = z.object({
   heading: z.string().max(200),
   body: z.string().max(2000),
@@ -17,7 +19,9 @@ const sectionSchema = z.object({
 
 const argsSchema = z.object({
   template: z.enum(['hero', 'minimal']),
-  headline: z.string().trim().min(1).max(200),
+  headline: z.string().trim().min(1).max(200).refine((value) => !UUID_RE.test(value), {
+    message: 'headline must be customer-facing copy, not an internal identifier',
+  }),
   subheadline: z.string().trim().min(1).max(400).optional(),
   cta: z.string().trim().min(1).max(100).optional(),
   sections: z.array(sectionSchema).max(12).optional(),

@@ -66,5 +66,14 @@ describe('renderLandingPreview', () => {
     expect(incomplete.checks.subheadline).toBe(false);
     expect(incomplete.checks.callToAction).toBe(false);
     expect(incomplete.checks.sections).toBe(false);
+
+    const leakedInternalId = verifyLandingSchema({
+      headline: '1aaa9fed-501b-4557-9047-dfe6cf2c596b',
+      subheadline: 'A useful supporting message.',
+      cta: 'Discover more',
+      sections: [{ heading: 'Benefit', body: 'A concrete customer benefit.' }],
+    });
+    expect(leakedInternalId.status).toBe('needs_attention');
+    expect(leakedInternalId.checks.headline).toBe(false);
   });
 });

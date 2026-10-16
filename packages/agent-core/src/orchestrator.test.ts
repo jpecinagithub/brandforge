@@ -336,6 +336,94 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
     expect((reviewCall?.args as { campaignId: string }).campaignId).not.toBe('s1');
   });
 
+  it('resolves generated copy fields into customer-facing landing content', async () => {
+    const plan = {
+      steps: [
+        {
+          id: 's1',
+          tool: 'generate_marketing_copy',
+          title: 'Write landing copy',
+          args: { topic: 'African logistics', channels: ['landing_page'] },
+          dependsOn: [],
+        },
+        {
+          id: 's2',
+          tool: 'create_landing_page',
+          title: 'Build landing',
+          args: {
+            template: 'hero',
+            headline: '{{s1.headline}}',
+            subheadline: '{{s1.body}}',
+            cta: '{{s1.cta}}',
+            sections: [{ heading: 'Service', body: 'Reliable end-to-end logistics.' }],
+          },
+          dependsOn: ['s1'],
+        },
+      ],
+    };
+    const { db, orch } = setup(plan);
+    const { id: runId } = await orch.startRun({
+      userId: 'u1',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      input: 'Create a logistics landing',
+      language: 'en',
+    });
+
+    await orch.executeRun(runId);
+
+    expect(db.__table('agent_runs')[0].status).toBe('completed');
+    const [landing] = db.__table('landing_pages');
+    expect(landing).toBeTruthy();
+    expect(landing.name).toBe('Big launch');
+    expect(landing.schema).toMatchObject({
+      headline: 'Big launch',
+      subheadline: 'It is here.',
+      cta: 'Shop now',
+    });
+    expect((landing.schema as { headline: string }).headline).not.toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it('fails an unresolved explicit content field instead of substituting an internal id', async () => {
+    const plan = {
+      steps: [
+        {
+          id: 's1',
+          tool: 'create_campaign',
+          title: 'Create campaign',
+          args: { name: 'Launch', objective: 'Awareness' },
+          dependsOn: [],
+        },
+        {
+          id: 's2',
+          tool: 'create_landing_page',
+          title: 'Build landing',
+          args: {
+            template: 'hero',
+            headline: '{{s1.headline}}',
+            subheadline: 'A useful supporting message.',
+            cta: 'Discover',
+            sections: [{ heading: 'Benefit', body: 'A customer-facing benefit.' }],
+          },
+          dependsOn: ['s1'],
+        },
+      ],
+    };
+    const { db, orch } = setup(plan);
+    const { id: runId } = await orch.startRun({
+      userId: 'u1',
+      workspaceId: 'w1',
+      projectId: 'p1',
+      input: 'Create a landing',
+      language: 'en',
+    });
+
+    await orch.executeRun(runId);
+
+    expect(db.__table('agent_runs')[0].status).toBe('failed');
+    expect(db.__table('landing_pages')).toHaveLength(0);
+  });
+
   it('keeps technical failures internal and resumes the stored plan without duplicating attempts', async () => {
     const badPlan = {
       steps: [

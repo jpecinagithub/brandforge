@@ -777,6 +777,14 @@ export class Orchestrator {
       if (requestedPath) {
         const value = readPath(data, requestedPath);
         if (value !== undefined) return value;
+        // An explicit field reference is content, not an ID request. Falling
+        // back to the only *Id output here previously put designDocumentId
+        // UUIDs into landing headlines and poster copy.
+        if (explicitPath !== undefined) {
+          throw new OrchestratorError(
+            `Step '${referenceId}' has no output at '${explicitPath}'`,
+          );
+        }
       }
       const idEntries = Object.entries(data).filter(
         ([key, value]) => key.endsWith('Id') && typeof value === 'string',
