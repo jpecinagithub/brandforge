@@ -69,6 +69,7 @@ export function ChatPanel({
   const [runsRefreshKey, setRunsRefreshKey] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const resultRefreshTimerRef = useRef<number | null>(null);
 
   const fetchMessages = useCallback(async () => {
     const res = await get<{ conversation: Conversation; messages: ConversationMessage[]; agent: AgentAvailability }>(
@@ -131,6 +132,23 @@ export function ChatPanel({
     [fetchMessages, onResultsChanged],
   );
 
+  const handlePartialResult = useCallback(() => {
+    if (resultRefreshTimerRef.current !== null) window.clearTimeout(resultRefreshTimerRef.current);
+    resultRefreshTimerRef.current = window.setTimeout(() => {
+      resultRefreshTimerRef.current = null;
+      setRunsRefreshKey((key) => key + 1);
+      onResultsChanged?.();
+    }, 400);
+  }, [onResultsChanged]);
+
+  const handleRunResumed = useCallback(() => {
+    void fetchActiveRuns();
+  }, [fetchActiveRuns]);
+
+  useEffect(() => () => {
+    if (resultRefreshTimerRef.current !== null) window.clearTimeout(resultRefreshTimerRef.current);
+  }, []);
+
   const send = async () => {
     const content = input.trim();
     if (!content || !conversation || sending) return;
@@ -187,7 +205,11 @@ export function ChatPanel({
         )}
       </div>
 
-      <AgentRunsHistory campaignId={campaignId} refreshKey={runsRefreshKey} />
+      <AgentRunsHistory
+        campaignId={campaignId}
+        refreshKey={runsRefreshKey}
+        onRunResumed={handleRunResumed}
+      />
 
       <div className="slim-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
         {loading ? (
@@ -213,7 +235,7 @@ export function ChatPanel({
           ))
         )}
         {liveRuns.map((run) => (
-          <AgentRunCard key={run.id} run={run} onFinished={handleRunFinished} />
+          <AgentRunCard key={run.id} run={run} onFinished={handleRunFinished} onResult={handlePartialResult} />
         ))}
         <div ref={bottomRef} />
       </div>

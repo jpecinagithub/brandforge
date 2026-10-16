@@ -17,15 +17,18 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
-import { and, eq, inArray, lt, sql } from 'drizzle-orm';
-import { agentRuns, createClient, createDb, type Db } from '@brandforge/database';
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { agentRuns, agentSteps, createClient, createDb, type Db } from '@brandforge/database';
 import { closeRunningAgentSteps } from '@brandforge/agent-core';
-import { buildOrchestrator, readAgentConfig, reconcileRunLedger } from '@brandforge/agent-server';
+import { buildOrchestrator, makeEmit, readAgentConfig, reconcileRunLedger } from '@brandforge/agent-server';
+import { recoveryTarget } from './recovery.js';
 
 const WORKER_ID = `worker-${hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
 const POLL_MS = 2000;
 const HEARTBEAT_MS = 15_000;
 const STALE_HEARTBEAT_MS = 5 * 60_000;
+const RECOVERY_SWEEP_MS = 60_000;
+const SHUTDOWN_GRACE_MS = 7_000;
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -39,6 +42,72 @@ const raw = createClient(databaseUrl);
 const db: Db = createDb(raw);
 
 let shuttingDown = false;
+let shutdownStarted = false;
+let activeRunId: string | null = null;
+let activeRunPromise: Promise<void> | null = null;
+let lastRecoverySweep = 0;
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function recoveryMessage(language: 'en' | 'es'): string {
+  return language === 'es'
+    ? 'La ejecución se está recuperando automáticamente. Los pasos completados no se repetirán.'
+    : 'The run is recovering automatically. Completed steps will not be repeated.';
+}
+
+function stoppedMessage(language: 'en' | 'es'): string {
+  return language === 'es'
+    ? 'La ejecución se detuvo de forma segura tras varios intentos. Todos los resultados creados se han conservado.'
+    : 'The run stopped safely after several attempts. All created results have been preserved.';
+}
+
+async function recoverInterruptedRun(runId: string, internalReason: string): Promise<void> {
+  const [run] = await db.select().from(agentRuns).where(eq(agentRuns.id, runId)).limit(1);
+  if (!run) return;
+  const target = recoveryTarget(run.status, run.attempts, agentConfig.maxAttempts);
+  if (!target) return;
+  const language = (run.plan as { language?: unknown } | null)?.language === 'es' ? 'es' : 'en';
+  const emit = makeEmit(db)(runId);
+
+  if (target === 'failed') {
+    const message = stoppedMessage(language);
+    await closeRunningAgentSteps(db, runId, 'failed', message);
+    const [failed] = await db
+      .update(agentRuns)
+      .set({
+        status: 'failed',
+        claimedBy: null,
+        heartbeatAt: null,
+        error: message,
+        finishedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(agentRuns.id, runId), inArray(agentRuns.status, ['planning', 'running'])))
+      .returning({ id: agentRuns.id });
+    if (failed) {
+      await emit('run.state', { from: run.status, to: 'failed' });
+      await emit('run.finished', { status: 'failed', error: message });
+    }
+    console.error(`[worker] run ${runId} exhausted recovery attempts: ${internalReason}`);
+    return;
+  }
+
+  await db
+    .update(agentRuns)
+    .set({ status: target, claimedBy: null, heartbeatAt: null, updatedAt: new Date() })
+    .where(and(eq(agentRuns.id, runId), inArray(agentRuns.status, ['planning', 'running'])));
+  await db
+    .update(agentSteps)
+    .set({ status: 'pending', error: null, finishedAt: null, updatedAt: new Date() })
+    .where(and(eq(agentSteps.runId, runId), eq(agentSteps.status, 'running')));
+  await emit('run.recovering', {
+    state: target,
+    attempt: run.attempts,
+    maxAttempts: agentConfig.maxAttempts,
+    message: recoveryMessage(language),
+  });
+  console.error(`[worker] run ${runId} released for recovery: ${internalReason}`);
+}
 
 /**
  * Crash recovery (startup): runs stuck in planning/running with a stale
@@ -51,7 +120,7 @@ async function requeueStale(): Promise<void> {
   const staleBefore = new Date(Date.now() - STALE_HEARTBEAT_MS);
   const stale = and(
     inArray(agentRuns.status, ['planning', 'running']),
-    lt(agentRuns.heartbeatAt, staleBefore),
+    or(isNull(agentRuns.heartbeatAt), lt(agentRuns.heartbeatAt, staleBefore)),
   );
 
   const revivedPlanning = await db
@@ -60,22 +129,20 @@ async function requeueStale(): Promise<void> {
       status: 'pending',
       claimedBy: null,
       heartbeatAt: null,
-      attempts: sql`${agentRuns.attempts} + 1`,
       updatedAt: new Date(),
     })
     .where(and(stale, eq(agentRuns.status, 'planning'), lt(agentRuns.attempts, agentConfig.maxAttempts)))
-    .returning({ id: agentRuns.id });
+    .returning({ id: agentRuns.id, plan: agentRuns.plan });
 
   const revivedRunning = await db
     .update(agentRuns)
     .set({
       claimedBy: null,
       heartbeatAt: null,
-      attempts: sql`${agentRuns.attempts} + 1`,
       updatedAt: new Date(),
     })
     .where(and(stale, eq(agentRuns.status, 'running'), lt(agentRuns.attempts, agentConfig.maxAttempts)))
-    .returning({ id: agentRuns.id });
+    .returning({ id: agentRuns.id, plan: agentRuns.plan });
 
   const dead = await db
     .update(agentRuns)
@@ -88,19 +155,33 @@ async function requeueStale(): Promise<void> {
       updatedAt: new Date(),
     })
     .where(and(stale, sql`${agentRuns.attempts} >= ${agentConfig.maxAttempts}`))
-    .returning({ id: agentRuns.id });
+    .returning({ id: agentRuns.id, plan: agentRuns.plan });
 
-  const revived = revivedPlanning.length + revivedRunning.length;
+  const revived = [...revivedPlanning, ...revivedRunning];
+  const emit = makeEmit(db);
+  for (const run of revived) {
+    const language = (run.plan as { language?: unknown } | null)?.language === 'es' ? 'es' : 'en';
+    await emit(run.id)('run.recovering', {
+      message: recoveryMessage(language),
+    });
+  }
   for (const run of dead) {
+    const language = (run.plan as { language?: unknown } | null)?.language === 'es' ? 'es' : 'en';
+    const message = stoppedMessage(language);
+    await db.update(agentRuns).set({ error: message, updatedAt: new Date() }).where(eq(agentRuns.id, run.id));
     await closeRunningAgentSteps(
       db,
       run.id,
       'failed',
-      'This step stopped safely. Completed results have been preserved.',
+      message,
     );
+    await emit(run.id)('run.finished', {
+      status: 'failed',
+      error: message,
+    });
   }
-  if (revived > 0 || dead.length > 0) {
-    console.log(`[worker] requeue: ${revived} released for re-claim, ${dead.length} marked failed`);
+  if (revived.length > 0 || dead.length > 0) {
+    console.log(`[worker] requeue: ${revived.length} released for re-claim, ${dead.length} marked failed`);
   }
 }
 
@@ -119,8 +200,9 @@ async function claimRun(): Promise<string | null> {
         updated_at = now()
     WHERE id = (
       SELECT id FROM agent_runs
-      WHERE status = 'pending'
-         OR (status = 'running' AND claimed_by IS NULL)
+      WHERE (status = 'pending'
+         OR (status = 'running' AND claimed_by IS NULL))
+        AND attempts < ${agentConfig.maxAttempts}
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -148,6 +230,9 @@ async function processOne(runId: string): Promise<void> {
     console.log(`[worker] run ${runId} finished`);
   } catch (err) {
     console.error(`[worker] run ${runId} crashed:`, err);
+    await recoverInterruptedRun(runId, err instanceof Error ? err.message : String(err)).catch((recoveryError) => {
+      console.error(`[worker] recovery failed for ${runId}:`, recoveryError);
+    });
   } finally {
     clearInterval(heartbeat);
     // Release the claim so a requeue can pick the run up if needed.
@@ -171,23 +256,38 @@ async function processOne(runId: string): Promise<void> {
 async function loop(): Promise<void> {
   while (!shuttingDown) {
     try {
+      if (Date.now() - lastRecoverySweep >= RECOVERY_SWEEP_MS) {
+        await requeueStale();
+        lastRecoverySweep = Date.now();
+      }
       const runId = await claimRun();
       if (runId) {
-        await processOne(runId);
+        activeRunId = runId;
+        activeRunPromise = processOne(runId);
+        await activeRunPromise;
+        activeRunId = null;
+        activeRunPromise = null;
         continue; // immediately look for more work
       }
     } catch (err) {
       console.error('[worker] claim loop error:', err);
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    await wait(POLL_MS);
   }
 }
 
 async function shutdown(signal: string): Promise<void> {
-  if (shuttingDown) return;
+  if (shutdownStarted) return;
+  shutdownStarted = true;
   shuttingDown = true;
   console.log(`[worker] received ${signal}, shutting down…`);
   try {
+    if (activeRunPromise) {
+      await Promise.race([activeRunPromise, wait(SHUTDOWN_GRACE_MS)]);
+    }
+    if (activeRunId) {
+      await recoverInterruptedRun(activeRunId, `worker received ${signal}`);
+    }
     await raw.end();
   } catch {
     // best effort
@@ -201,6 +301,7 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 async function main(): Promise<void> {
   console.log(`[worker] starting (${WORKER_ID})`);
   await requeueStale();
+  lastRecoverySweep = Date.now();
   await loop();
 }
 

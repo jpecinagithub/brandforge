@@ -13,23 +13,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, EmptyState, Modal, Spinner } from '@brandforge/ui';
-import { Bot, Check, ChevronDown, Circle, XCircle } from 'lucide-react';
+import { Bot, Check, ChevronDown, Circle, RotateCcw, XCircle } from 'lucide-react';
 import { get, post } from '@/lib/api';
 import type { AgentRun, AgentStep } from '@brandforge/shared';
-import { runStateLabelKey, runStateTone } from './agentUi';
+import { runStateLabelKey, runStateTone, toolLabelKey } from './agentUi';
 
 interface AgentRunsHistoryProps {
   campaignId: string;
   refreshKey: number;
+  onRunResumed?: () => void;
 }
 
-export function AgentRunsHistory({ campaignId, refreshKey }: AgentRunsHistoryProps) {
+export function AgentRunsHistory({ campaignId, refreshKey, onRunResumed }: AgentRunsHistoryProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [runs, setRuns] = useState<AgentRun[] | null>(null);
   const [detail, setDetail] = useState<{ run: AgentRun; steps: AgentStep[] } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -42,14 +44,32 @@ export function AgentRunsHistory({ campaignId, refreshKey }: AgentRunsHistoryPro
 
   const decide = useCallback(async (runId: string, approved: boolean) => {
     setDeciding(true);
+    setActionError(null);
     try {
       await post(`/api/v1/agent/runs/${runId}/approve`, { approved });
       setDetail(null);
       void load();
+    } catch {
+      setActionError(t('errors.generic'));
     } finally {
       setDeciding(false);
     }
-  }, [load]);
+  }, [load, t]);
+
+  const resume = useCallback(async (runId: string) => {
+    setDeciding(true);
+    setActionError(null);
+    try {
+      await post(`/api/v1/agent/runs/${runId}/resume`);
+      setDetail(null);
+      await load();
+      onRunResumed?.();
+    } catch {
+      setActionError(t('agent.resumeError'));
+    } finally {
+      setDeciding(false);
+    }
+  }, [load, onRunResumed, t]);
 
   useEffect(() => {
     void load();
@@ -57,6 +77,7 @@ export function AgentRunsHistory({ campaignId, refreshKey }: AgentRunsHistoryPro
 
   const openDetail = async (runId: string) => {
     setDetailLoading(true);
+    setActionError(null);
     try {
       const res = await get<{ run: AgentRun; steps: AgentStep[] }>(`/api/v1/agent/runs/${runId}`);
       setDetail({ run: res.run, steps: res.steps ?? [] });
@@ -132,9 +153,20 @@ export function AgentRunsHistory({ campaignId, refreshKey }: AgentRunsHistoryPro
               </span>
             </div>
             {detail.run.error && (
-              <p className="break-words text-xs text-red-600 dark:text-red-400" role="alert">
+              <p className="break-words rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" role="status">
                 {detail.run.error}
               </p>
+            )}
+            {actionError && (
+              <p className="break-words rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" role="status">
+                {actionError}
+              </p>
+            )}
+            {(detail.run.state === 'failed' || detail.run.state === 'cancelled') && (
+              <Button size="sm" variant="secondary" onClick={() => void resume(detail.run.id)} disabled={deciding}>
+                {deciding ? <Spinner size="sm" /> : <RotateCcw size={14} />}
+                {t('agent.resume')}
+              </Button>
             )}
             {detail.run.approval && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/30 dark:bg-amber-500/10">
@@ -161,14 +193,14 @@ export function AgentRunsHistory({ campaignId, refreshKey }: AgentRunsHistoryPro
                     {s.state === 'completed' ? (
                       <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
                     ) : s.state === 'failed' ? (
-                      <XCircle size={14} className="mt-0.5 shrink-0 text-red-500" aria-hidden="true" />
+                      <XCircle size={14} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
                     ) : (
                       <Circle size={14} className="mt-0.5 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden="true" />
                     )}
                     <div className="min-w-0">
                       <p className="break-words text-slate-700 dark:text-slate-200">{s.title}</p>
-                      {s.tool && <p className="font-mono text-[11px] text-slate-400 dark:text-slate-500">{s.tool}</p>}
-                      {s.error && <p className="break-words text-red-600 dark:text-red-400">{s.error}</p>}
+                      {s.tool && <p className="text-[11px] text-slate-400 dark:text-slate-500">{t(toolLabelKey(s.tool) ?? 'agent.toolWorking')}</p>}
+                      {s.error && <p className="break-words text-amber-700 dark:text-amber-300">{s.error}</p>}
                     </div>
                   </li>
                 ))}

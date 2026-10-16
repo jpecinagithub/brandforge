@@ -77,8 +77,12 @@ export function toAgentRunDto(r: typeof agentRuns.$inferSelect): AgentRun {
 }
 
 function toAgentStepDto(s: typeof agentSteps.$inferSelect): AgentStep {
+  const detail = s.detail && typeof s.detail === 'object'
+    ? s.detail as Record<string, unknown>
+    : {};
   return {
     id: s.id,
+    planStepId: typeof detail.planStepId === 'string' ? detail.planStepId : undefined,
     stepNo: s.stepNo,
     title: s.title,
     tool: s.kind,
@@ -301,6 +305,9 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       const { runId } = request.params as { runId: string };
       const found = await loadRunForUser(db, request, reply, runId, 'viewer');
       if (!found) return;
+      const rawQueryAfter = (request.query as { after?: string }).after;
+      const queryAfter = rawQueryAfter === undefined ? null : Number(rawQueryAfter);
+      const headerAfter = Number(request.headers['last-event-id'] ?? -1);
 
       reply.hijack();
       const raw = reply.raw;
@@ -312,7 +319,11 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       });
       raw.write(': connected\n\n');
 
-      let lastSeq = -1;
+      let lastSeq = queryAfter !== null && Number.isInteger(queryAfter) && queryAfter >= -1
+        ? queryAfter
+        : Number.isInteger(headerAfter) && headerAfter >= -1
+          ? headerAfter
+          : -1;
       let closed = false;
       const close = () => {
         if (closed) return;
@@ -333,7 +344,7 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
         for (const e of events) {
           if (closed) return true;
           lastSeq = Math.max(lastSeq, e.seq);
-          raw.write(`data: ${JSON.stringify(toAgentEventDto(e))}\n\n`);
+          raw.write(`id: ${e.seq}\ndata: ${JSON.stringify(toAgentEventDto(e))}\n\n`);
           if (e.type === 'run.finished') return true;
         }
         const [run] = await db.select({ status: agentRuns.status }).from(agentRuns).where(eq(agentRuns.id, runId)).limit(1);

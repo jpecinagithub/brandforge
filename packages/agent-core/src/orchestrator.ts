@@ -426,6 +426,15 @@ export class Orchestrator {
       .set({ plan: planJson, totalSteps: plan.steps.length, costUsd: String(costAfterPlanning), updatedAt: new Date() })
       .where(eq(agentRuns.id, run.id));
     run = { ...run, plan: planJson, totalSteps: plan.steps.length, costUsd: String(costAfterPlanning) };
+    await emit('run.plan', {
+      totalSteps: plan.steps.length,
+      steps: plan.steps.map((step) => ({
+        id: step.id,
+        title: step.title,
+        tool: step.tool,
+        dependsOn: step.dependsOn,
+      })),
+    });
 
     const budgetUsd =
       run.budgetUsd != null ? Number(run.budgetUsd) : this.config.defaultBudgetUsd;
@@ -562,13 +571,25 @@ export class Orchestrator {
           kind: step.tool,
           title: step.title,
           status: 'running',
+          detail: { planStepId: step.id },
           startedAt: new Date(),
         })
         .returning();
     } else {
       await this.db
         .update(agentSteps)
-        .set({ status: 'running', startedAt: new Date(), error: null, updatedAt: new Date() })
+        .set({
+          status: 'running',
+          detail: {
+            ...(stepRow.detail && typeof stepRow.detail === 'object'
+              ? stepRow.detail as Record<string, unknown>
+              : {}),
+            planStepId: step.id,
+          },
+          startedAt: new Date(),
+          error: null,
+          updatedAt: new Date(),
+        })
         .where(eq(agentSteps.id, stepRow.id));
       stepRow = { ...stepRow, status: 'running' };
     }
@@ -609,7 +630,13 @@ export class Orchestrator {
     let result: ToolResult;
     if (completedPrior?.result) {
       result = completedPrior.result as unknown as ToolResult;
-      await emit('tool.completed', { stepId: step.id, tool: step.tool, cached: true });
+      await emit('tool.completed', {
+        stepId: step.id,
+        tool: step.tool,
+        cached: true,
+        ok: result.ok,
+        summary: result.summary,
+      });
     } else {
       try {
         result = await this.runToolCall(
@@ -851,7 +878,13 @@ export class Orchestrator {
           updatedAt: new Date(),
         })
         .where(eq(agentToolCalls.id, callId));
-      await emit('tool.completed', { stepId: step.id, tool: step.tool, durationMs });
+      await emit('tool.completed', {
+        stepId: step.id,
+        tool: step.tool,
+        durationMs,
+        ok: result.ok,
+        summary: result.summary,
+      });
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -972,7 +1005,7 @@ export class Orchestrator {
       .update(agentSteps)
       .set({
         status: 'completed',
-        detail: { costUsd },
+        detail: { planStepId: step.id, costUsd },
         tokensIn: usage?.tokensIn ?? 0,
         tokensOut: usage?.tokensOut ?? 0,
         finishedAt: new Date(),

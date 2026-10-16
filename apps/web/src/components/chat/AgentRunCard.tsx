@@ -20,10 +20,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Badge, Button, Input, Spinner } from '@brandforge/ui';
-import { AlertCircle, Check, Circle, RefreshCw, Wrench, X, XCircle } from 'lucide-react';
+import { AlertCircle, Check, Circle, RefreshCw, RotateCcw, Sparkles, X, XCircle } from 'lucide-react';
 import { apiUrl, get, post } from '@/lib/api';
 import type { AgentRun, AgentStep, RunState } from '@brandforge/shared';
-import { isKnownRunState, isRunActive, runStateLabelKey, runStateTone } from './agentUi';
+import { isKnownRunState, isRunActive, runStateLabelKey, runStateTone, toolLabelKey } from './agentUi';
 
 type StepState = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
@@ -76,9 +76,10 @@ function settleVisibleSteps(steps: StepView[], state: RunState): StepView[] {
 interface AgentRunCardProps {
   run: AgentRun;
   onFinished: (runId: string) => void;
+  onResult?: () => void;
 }
 
-export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps) {
+export function AgentRunCard({ run: initialRun, onFinished, onResult }: AgentRunCardProps) {
   const { t } = useTranslation();
   const runId = initialRun.id;
 
@@ -96,25 +97,37 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
   );
   const [error, setError] = useState<string | null>(initialRun.error);
   const [summary, setSummary] = useState<string | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [streamError, setStreamError] = useState(false);
-  const [acting, setActing] = useState<'approve' | 'reject' | 'cancel' | null>(null);
+  const [acting, setActing] = useState<'approve' | 'reject' | 'cancel' | 'resume' | null>(null);
   const [budgetInput, setBudgetInput] = useState('');
 
   const esRef = useRef<EventSource | null>(null);
   const finishedRef = useRef(false);
+  const lastSeqRef = useRef(-1);
+  const processedEventIdsRef = useRef(new Set<string>());
   const onFinishedRef = useRef(onFinished);
+  const onResultRef = useRef(onResult);
   onFinishedRef.current = onFinished;
+  onResultRef.current = onResult;
 
   /* ------------------------------ SSE events ------------------------------ */
 
   const handleEvent = useCallback(
     (raw: string) => {
-      let ev: { type?: unknown; payload?: unknown };
+      let ev: { id?: unknown; seq?: unknown; type?: unknown; payload?: unknown };
       try {
-        ev = JSON.parse(raw) as { type?: unknown; payload?: unknown };
+        ev = JSON.parse(raw) as { id?: unknown; seq?: unknown; type?: unknown; payload?: unknown };
       } catch {
         return;
       }
+      const eventId = str(ev.id);
+      if (eventId) {
+        if (processedEventIdsRef.current.has(eventId)) return;
+        processedEventIdsRef.current.add(eventId);
+      }
+      const seq = num(ev.seq);
+      if (seq !== undefined) lastSeqRef.current = Math.max(lastSeqRef.current, seq);
       const type = typeof ev.type === 'string' ? ev.type : '';
       const p = (ev.payload && typeof ev.payload === 'object' ? ev.payload : {}) as Record<string, unknown>;
 
@@ -122,6 +135,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         case 'run.started':
           setRunState('planning');
           setError(null);
+          setRecoveryNotice(null);
           break;
         case 'run.state': {
           const s = str(p.to) ?? str(p.state);
@@ -131,6 +145,24 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           }
           break;
         }
+        case 'run.plan': {
+          const planned = Array.isArray(p.steps) ? p.steps : [];
+          const next = planned.flatMap((candidate) => {
+            if (!candidate || typeof candidate !== 'object') return [];
+            const item = candidate as Record<string, unknown>;
+            const key = str(item.id);
+            if (!key) return [];
+            return [{ key, title: str(item.title) ?? key, tool: str(item.tool), state: 'pending' as const }];
+          });
+          if (next.length > 0) setSteps(next);
+          const total = num(p.totalSteps);
+          if (total !== undefined) setTotalSteps(total);
+          break;
+        }
+        case 'run.recovering':
+          setRecoveryNotice(str(p.message) ?? t('agent.recoveringNotice'));
+          setStreamError(false);
+          break;
         case 'run.progress': {
           const c = num(p.completedSteps);
           const total = num(p.totalSteps);
@@ -142,6 +174,8 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         case 'step.started': {
           const stepId = str(p.stepId);
           if (!stepId) break;
+          setCurrentStepId(stepId);
+          setRecoveryNotice(null);
           setSteps((prev) => {
             const found = prev.find((s) => s.key === stepId);
             const next: StepView = {
@@ -157,6 +191,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         case 'step.completed': {
           const stepId = str(p.stepId);
           if (!stepId) break;
+          setCurrentStepId((current) => current === stepId ? null : current);
           setSteps((prev) =>
             prev.map((s) => (s.key === stepId ? { ...s, state: 'completed', title: str(p.title) ?? s.title } : s)),
           );
@@ -165,6 +200,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         case 'step.failed': {
           const stepId = str(p.stepId);
           if (!stepId) break;
+          setCurrentStepId((current) => current === stepId ? null : current);
           const err = str(p.error);
           setSteps((prev) =>
             prev.map((s) =>
@@ -179,6 +215,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
             ...prev,
             { tool: str(p.tool) ?? 'tool', summary: str(p.summary) ?? '', ok: p.ok !== false },
           ]);
+          onResultRef.current?.();
           break;
         }
         case 'run.waiting_approval': {
@@ -209,6 +246,8 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           }
           setSummary(str(p.summary) ?? null);
           setApproval(null);
+          setCurrentStepId(null);
+          setRecoveryNotice(null);
           setStreamError(false);
           onFinishedRef.current(runId);
           break;
@@ -218,7 +257,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           break;
       }
     },
-    [runId],
+    [runId, t],
   );
 
   /* --------------------------- hydrate + subscribe --------------------------- */
@@ -247,13 +286,30 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
           ? { reason: res.run.approval.reason, requestedBudgetUsd: res.run.approval.requestedBudgetUsd }
           : null,
       );
-      const hydratedSteps = (res.steps ?? []).map((s) => ({
-          key: s.id,
-          title: s.title,
-          tool: s.tool || undefined,
-          state: stepStateOf(s.state),
-          error: s.error ?? undefined,
-        }));
+      const persistedByPlanId = new Map((res.steps ?? []).map((step) => [
+        step.planStepId ?? res.run.plan?.steps[step.stepNo]?.id ?? step.id,
+        step,
+      ]));
+      const hydratedSteps: StepView[] = (res.run.plan?.steps ?? []).map((planned) => {
+        const persisted = persistedByPlanId.get(planned.id);
+        persistedByPlanId.delete(planned.id);
+        return {
+          key: planned.id,
+          title: persisted?.title || planned.title,
+          tool: persisted?.tool || planned.tool,
+          state: persisted ? stepStateOf(persisted.state) : 'pending',
+          error: persisted?.error ?? undefined,
+        };
+      });
+      for (const [key, persisted] of persistedByPlanId) {
+        hydratedSteps.push({
+          key,
+          title: persisted.title,
+          tool: persisted.tool || undefined,
+          state: stepStateOf(persisted.state),
+          error: persisted.error ?? undefined,
+        });
+      }
       setSteps(settleVisibleSteps(hydratedSteps, res.run.state));
     } catch {
       // SSE is the source of truth; hydrate is best-effort (e.g. endpoint
@@ -265,12 +321,14 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
     if (finishedRef.current) return;
     esRef.current?.close();
     setStreamError(false);
-    const es = new EventSource(apiUrl(`/api/v1/agent/runs/${runId}/events`), { withCredentials: true });
+    const after = lastSeqRef.current;
+    const es = new EventSource(apiUrl(`/api/v1/agent/runs/${runId}/events?after=${after}`), { withCredentials: true });
     esRef.current = es;
     es.onmessage = (e) => handleEvent(e.data);
     es.onerror = () => {
       if (finishedRef.current) return;
-      // Stop the browser's built-in infinite retry; the user retries manually.
+      // Stop the browser's built-in retry loop; polling starts immediately and
+      // this component opens a clean stream again after a short delay.
       es.close();
       esRef.current = null;
       setStreamError(true);
@@ -300,8 +358,12 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
     };
     void poll();
     const timer = window.setInterval(() => void poll(), 3000);
-    return () => window.clearInterval(timer);
-  }, [hydrate, streamError]);
+    const reconnectTimer = window.setTimeout(() => subscribe(), 10_000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(reconnectTimer);
+    };
+  }, [hydrate, streamError, subscribe]);
 
   /* --------------------------------- actions --------------------------------- */
 
@@ -329,6 +391,26 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
       await post(`/api/v1/agent/runs/${runId}/cancel`);
     } catch {
       setError(t('errors.generic'));
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const resume = async () => {
+    setActing('resume');
+    try {
+      const res = await post<{ run: AgentRun }>(`/api/v1/agent/runs/${runId}/resume`);
+      finishedRef.current = false;
+      setRunState(res.run.state);
+      setError(null);
+      setSummary(null);
+      setRecoveryNotice(t('agent.recoveringNotice'));
+      setSteps((current) => current.map((step) => step.state === 'completed'
+        ? step
+        : { ...step, state: 'pending', error: undefined }));
+      subscribe();
+    } catch {
+      setError(t('agent.resumeError'));
     } finally {
       setActing(null);
     }
@@ -371,7 +453,28 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
             <span className="text-xs">{t('agent.cancel')}</span>
           </Button>
         )}
+        {(runState === 'failed' || runState === 'cancelled') && (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => void resume()}
+            disabled={acting !== null}
+            aria-label={t('agent.resume')}
+            className="!px-2.5"
+          >
+            {acting === 'resume' ? <Spinner size="sm" /> : <RotateCcw size={14} />}
+            <span className="text-xs">{t('agent.resume')}</span>
+          </Button>
+        )}
       </div>
+
+      {active && (
+        <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-300" role="status">
+          {recoveryNotice ?? (currentTitle
+            ? t('agent.workingOn', { step: currentTitle })
+            : t(runState === 'planning' ? 'agent.planningDetail' : 'agent.runningDetail'))}
+        </p>
+      )}
 
       {/* Progress bar */}
       {totalSteps > 0 && (
@@ -403,7 +506,7 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
               {s.state === 'completed' ? (
                 <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" aria-label={t('agent.completed')} />
               ) : s.state === 'failed' ? (
-                <XCircle size={14} className="mt-0.5 shrink-0 text-red-500" aria-label={t('agent.failed')} />
+                <XCircle size={14} className="mt-0.5 shrink-0 text-amber-500" aria-label={t('agent.failed')} />
               ) : s.state === 'cancelled' ? (
                 <X size={14} className="mt-0.5 shrink-0 text-slate-400" aria-label={t('agent.cancelled')} />
               ) : s.state === 'running' ? (
@@ -413,8 +516,8 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
               )}
               <div className="min-w-0">
                 <p className="break-words text-slate-700 dark:text-slate-200">{s.title}</p>
-                {s.tool && <p className="font-mono text-[11px] text-slate-400 dark:text-slate-500">{s.tool}</p>}
-                {s.error && <p className="break-words text-red-600 dark:text-red-400">{s.error}</p>}
+                {s.tool && <p className="text-[11px] text-slate-400 dark:text-slate-500">{t(toolLabelKey(s.tool) ?? 'agent.toolWorking')}</p>}
+                {s.error && <p className="break-words text-amber-700 dark:text-amber-300">{s.error}</p>}
               </div>
             </li>
           ))}
@@ -426,9 +529,9 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
         <ul className="mt-2 space-y-1">
           {tools.map((tl, i) => (
             <li key={i} className="flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-              <Wrench size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <Sparkles size={12} className="mt-0.5 shrink-0 text-violet-500" aria-hidden="true" />
               <span className="min-w-0 break-words">
-                <span className="font-mono">{tl.tool}</span>
+                <span className="font-medium text-slate-600 dark:text-slate-300">{t(toolLabelKey(tl.tool) ?? 'agent.toolWorking')}</span>
                 {tl.summary ? `: ${tl.summary}` : ''}
                 {!tl.ok && ` (${t('agent.failed')})`}
               </span>
@@ -453,8 +556,8 @@ export function AgentRunCard({ run: initialRun, onFinished }: AgentRunCardProps)
 
       {/* Error */}
       {error && (
-        <p className="mt-2 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400" role="alert">
-          <AlertCircle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" role="status">
+          <AlertCircle size={13} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
           <span className="break-words">{error}</span>
         </p>
       )}

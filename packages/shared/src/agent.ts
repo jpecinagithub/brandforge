@@ -91,6 +91,8 @@ export type AgentPlan = z.infer<typeof AgentPlanSchema>;
 export const AGENT_EVENT_TYPES = [
   'run.started',
   'run.state',
+  'run.plan',
+  'run.recovering',
   'run.progress',
   'step.started',
   'step.completed',
@@ -150,6 +152,7 @@ export type AgentRun = z.infer<typeof AgentRunSchema>;
 
 export const AgentStepSchema = z.object({
   id: z.string().uuid(),
+  planStepId: z.string().optional(),
   stepNo: z.number().int(),
   title: z.string(),
   tool: z.string(),

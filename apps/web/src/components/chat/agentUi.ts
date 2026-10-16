@@ -22,7 +22,7 @@ export const runStateTone: Record<RunState, BadgeTone> = {
   running: 'violet',
   waiting_approval: 'amber',
   completed: 'emerald',
-  failed: 'red',
+  failed: 'amber',
   cancelled: 'slate',
 };
 
@@ -43,4 +43,24 @@ export function isRunActive(state: RunState): boolean {
 
 export function isKnownRunState(state: string): state is RunState {
   return (RUN_STATES as readonly string[]).includes(state);
+}
+
+const toolLabelKeys: Record<string, string> = {
+  create_campaign: 'agent.toolCreateCampaign',
+  update_campaign: 'agent.toolUpdateCampaign',
+  create_brand_kit: 'agent.toolBrandKit',
+  generate_marketing_copy: 'agent.toolMarketingCopy',
+  generate_image: 'agent.toolImage',
+  generate_social_post: 'agent.toolSocialPost',
+  create_poster: 'agent.toolPoster',
+  create_landing_page: 'agent.toolLanding',
+  edit_design: 'agent.toolEditDesign',
+  save_asset: 'agent.toolSaveAsset',
+  list_project_assets: 'agent.toolReviewAssets',
+  export_campaign: 'agent.toolExportCampaign',
+  review_campaign: 'agent.toolReviewCampaign',
+};
+
+export function toolLabelKey(tool?: string): string | null {
+  return tool ? toolLabelKeys[tool] ?? null : null;
 }

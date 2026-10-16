@@ -181,6 +181,7 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
     for (const t of [
       'run.started',
       'run.state',
+      'run.plan',
       'step.started',
       'step.completed',
       'tool.started',
@@ -191,6 +192,15 @@ describe('Orchestrator.executeRun (fake ports, fake Db)', () => {
     ] as const) {
       expect(types).toContain(t);
     }
+    const planEvent = emitter.events.find((event) => !event.global && event.type === 'run.plan');
+    expect(planEvent?.payload.totalSteps).toBe(2);
+    expect(planEvent?.payload.steps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 's1', title: 'Create campaign' }),
+      expect.objectContaining({ id: 's2', title: 'Write copy' }),
+    ]));
+    const toolResult = emitter.events.find((event) => !event.global && event.type === 'tool.completed');
+    expect(toolResult?.payload.ok).toBe(true);
+    expect(toolResult?.payload.summary).toBeTruthy();
 
     // Honest summary delivered to the conversation.
     expect(conversation.messages).toHaveLength(1);
