@@ -64,7 +64,7 @@ test('landing is publishable and revocable; assets are visible and downloadable'
     (response) => response.url().includes('/api/v1/assets')
       && response.request().method() === 'POST',
   );
-  await page.locator('input[type="file"]').setInputFiles(ASSET_PNG);
+  await page.locator('input[type="file"]').first().setInputFiles(ASSET_PNG);
   expect((await uploadResponsePromise).ok()).toBeTruthy();
   await expect(page.getByText(/\d+ of \d+ files verified/).first()).toBeVisible();
   await expect(page.getByText('Available').first()).toBeVisible();
