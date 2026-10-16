@@ -45,6 +45,8 @@ export function LandingStudio({
     () => pages.find((page) => page.id === selectedId) ?? null,
     [pages, selectedId],
   );
+  // Keep the workspace usable while the API and web app roll out independently.
+  const verificationStatus = selected?.verification?.status ?? 'needs_attention';
 
   const loadPages = useCallback(async (preferLatest = false) => {
     setLoading(true);
@@ -169,9 +171,9 @@ export function LandingStudio({
           <h3 className="font-semibold text-slate-900 dark:text-white">{t('workspace.landingTitle')}</h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('workspace.landingDescription')}</p>
           {selected ? (
-            <p className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${selected.verification.status === 'ready' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300'}`}>
+            <p className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${verificationStatus === 'ready' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300'}`}>
               <CheckCircle2 size={13} />
-              {t(selected.verification.status === 'ready' ? 'workspace.landingVerified' : 'workspace.landingNeedsAttention')}
+              {t(verificationStatus === 'ready' ? 'workspace.landingVerified' : 'workspace.landingNeedsAttention')}
             </p>
           ) : null}
         </div>
@@ -232,7 +234,7 @@ export function LandingStudio({
               size="sm"
               icon={<Link2 size={15} />}
               loading={publishing}
-              disabled={selected.verification.status !== 'ready'}
+              disabled={verificationStatus !== 'ready'}
               onClick={() => void publish()}
             >
               {t('workspace.landingPublish')}
