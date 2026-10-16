@@ -1,8 +1,10 @@
 /** E2E: verified landing publication and asset delivery through the real UI. */
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 
 const WEB = process.env.E2E_REMOTE_BASE_URL ?? 'http://localhost:4173';
 const API = process.env.E2E_API_URL ?? 'http://localhost:3014';
+const ASSET_PNG = path.join(__dirname, 'fixtures', 'avatar.png');
 
 test.beforeEach(async ({ page, request }) => {
   const response = await request.post(`${API}/api/v1/auth/demo`);
@@ -58,7 +60,13 @@ test('landing is publishable and revocable; assets are visible and downloadable'
   await publicPage.close();
 
   await page.getByRole('tab', { name: 'Assets' }).click();
-  await expect(page.getByText(/\d+ of \d+ files verified/)).toBeVisible();
+  const uploadResponsePromise = page.waitForResponse(
+    (response) => response.url().includes('/api/v1/assets')
+      && response.request().method() === 'POST',
+  );
+  await page.locator('input[type="file"]').setInputFiles(ASSET_PNG);
+  expect((await uploadResponsePromise).ok()).toBeTruthy();
+  await expect(page.getByText(/\d+ of \d+ files verified/).first()).toBeVisible();
   await expect(page.getByText('Available').first()).toBeVisible();
 
   const downloadPromise = page.waitForEvent('download');
