@@ -11,7 +11,7 @@
  * from the original name (or the detected mime). Original names are stored
  * in the DB row, never on disk.
  */
-import { mkdir, rm, writeFile, readFile } from 'node:fs/promises';
+import { access, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { config } from './config.js';
 
@@ -34,6 +34,8 @@ export interface StorageAdapter {
   put(relativePath: string, data: Buffer): Promise<string>;
   /** Read bytes by relative path. */
   get(relativePath: string): Promise<Buffer>;
+  /** Verify that an object is physically available without loading it. */
+  exists(relativePath: string): Promise<boolean>;
   /** Best-effort delete; never throws when the file is missing. */
   remove(relativePath: string): Promise<void>;
   /** Absolute path for a relative path (local adapter only — for downloads). */
@@ -61,6 +63,15 @@ export class LocalDiskStorage implements StorageAdapter {
 
   async get(relativePath: string): Promise<Buffer> {
     return readFile(path.join(this.root, guard(relativePath)));
+  }
+
+  async exists(relativePath: string): Promise<boolean> {
+    try {
+      await access(path.join(this.root, guard(relativePath)));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async remove(relativePath: string): Promise<void> {

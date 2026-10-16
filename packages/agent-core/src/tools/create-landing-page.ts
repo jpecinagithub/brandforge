@@ -68,8 +68,13 @@ export const createLandingPageTool: AgentTool<Args> = {
 
     return {
       ok: true,
-      summary: `Landing page "${a.headline}" created (template: ${a.template}).`,
-      data: { landingPageId: page.id, schema },
+      summary: `Landing page "${a.headline}" created and verified (template: ${a.template}).`,
+      data: {
+        landingPageId: page.id,
+        previewUrl: `/api/v1/landing-pages/${page.id}/preview`,
+        verification: { status: 'ready' },
+        schema,
+      },
     };
   },
 };

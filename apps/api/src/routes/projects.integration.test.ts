@@ -5,6 +5,8 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { landingPages } from '@brandforge/database';
+import { getDb } from '../db.js';
 
 /** Mirrors tests/setup/no-network.ts (kept local so tsc stays happy). */
 interface FetchAttempt {
@@ -233,6 +235,26 @@ describe('project workspace flow', () => {
     expect(image.headers['cross-origin-resource-policy']).toBe('cross-origin');
     expect(image.headers['cache-control']).toBe('private, no-store');
 
+    const listed = await app.inject(
+      authed(cookie, { method: 'GET', url: `/api/v1/projects/${projectId}/assets` }),
+    );
+    expect(listed.statusCode).toBe(200);
+    const listedBody = listed.json() as {
+      assets: Array<{ id: string; available: boolean; downloadUrl: string }>;
+      verification: { total: number; available: number };
+    };
+    expect(listedBody.assets[0]).toMatchObject({
+      id: assetId,
+      available: true,
+      downloadUrl: `/api/v1/assets/${assetId}?download=1`,
+    });
+    expect(listedBody.verification).toEqual(expect.objectContaining({ total: 1, available: 1 }));
+
+    const download = await app.inject(
+      authed(cookie, { method: 'GET', url: `/api/v1/assets/${assetId}?download=1` }),
+    );
+    expect(download.headers['content-disposition']).toContain('attachment');
+
     const del = await app.inject(authed(cookie, { method: 'DELETE', url: `/api/v1/projects/${projectId}` }));
     expect(del.statusCode).toBe(200);
     const gone = await app.inject(authed(cookie, { method: 'GET', url: `/api/v1/projects/${projectId}` }));
@@ -259,5 +281,48 @@ describe('project workspace flow', () => {
       }),
     );
     expect(attempt.statusCode).toBe(404);
+  });
+
+  it('publishes a verified landing through a revocable public URL', async () => {
+    const { cookie } = await registerVerifyLogin(app);
+    const wsId = await createWorkspace(app, cookie);
+    const pc = await app.inject(
+      authed(cookie, { method: 'POST', url: '/api/v1/projects', payload: { workspaceId: wsId, name: 'Public launch' } }),
+    );
+    const projectId = (pc.json() as { project: { id: string } }).project.id;
+    const [page] = await getDb().insert(landingPages).values({
+      projectId,
+      name: 'Public landing',
+      schema: {
+        headline: 'A verified landing',
+        subheadline: 'Complete content ready to share.',
+        cta: 'Discover it',
+        sections: [{ heading: 'A real benefit', body: 'The complete supporting explanation.' }],
+      },
+    }).returning();
+
+    const publish = await app.inject(
+      authed(cookie, { method: 'POST', url: `/api/v1/landing-pages/${page.id}/publish` }),
+    );
+    expect(publish.statusCode).toBe(200);
+    const published = publish.json() as { landingPage: { publicUrl: string; publishedAt: string } };
+    expect(published.landingPage.publicUrl).toContain('/showcase/landing/');
+    expect(published.landingPage.publishedAt).toBeTruthy();
+    const publicId = published.landingPage.publicUrl.split('/').at(-1)!;
+
+    const preview = await app.inject({
+      method: 'GET',
+      url: `/api/v1/public/landing-pages/${publicId}/preview`,
+    });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.headers['content-type']).toContain('text/html');
+    expect(preview.body).toContain('A verified landing');
+
+    const unpublish = await app.inject(
+      authed(cookie, { method: 'DELETE', url: `/api/v1/landing-pages/${page.id}/publish` }),
+    );
+    expect(unpublish.statusCode).toBe(200);
+    const revoked = await app.inject({ method: 'GET', url: `/api/v1/public/landing-pages/${publicId}/preview` });
+    expect(revoked.statusCode).toBe(404);
   });
 });

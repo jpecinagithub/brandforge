@@ -145,12 +145,20 @@ export function extForMime(mimeType: string): string {
 export function makeStorage(db: Db, workspaceId: string, storagePath: string): StoragePort {
   return {
     async saveFile(input) {
+      if (input.data.length === 0) {
+        throw new Error('Refusing to persist an empty asset');
+      }
       const filename = `${randomUUID()}.${extForMime(input.mimeType)}`;
       const dir = path.join(storagePath, workspaceId);
       const relativePath = path.posix.join(workspaceId, filename);
       await fs.mkdir(dir, { recursive: true });
       const fullPath = path.join(dir, filename);
       await fs.writeFile(fullPath, input.data);
+      const persisted = await fs.stat(fullPath);
+      if (!persisted.isFile() || persisted.size !== input.data.length) {
+        await fs.rm(fullPath, { force: true });
+        throw new Error('Asset persistence verification failed');
+      }
       let row: { id: string };
       try {
         [row] = await db

@@ -235,16 +235,24 @@ export const designDocuments = pgTable('design_documents', {
   updatedAt: timestamp('updated_at', { withTimezone: true }),
 });
 
-export const landingPages = pgTable('landing_pages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  projectId: uuid('project_id')
-    .notNull()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  schema: jsonb('schema').notNull().default('{}'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
-});
+export const landingPages = pgTable(
+  'landing_pages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    schema: jsonb('schema').notNull().default('{}'),
+    // Publication is explicit. A nullable opaque id keeps drafts private and
+    // allows a previously shared URL to be revoked without deleting the page.
+    publicId: uuid('public_id'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('landing_pages_public_id_uidx').on(t.publicId)],
+);
 
 // ---------------------------------------------------------------------------
 // Conversations and agent-generated messages

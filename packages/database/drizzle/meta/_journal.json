@@ -43,6 +43,13 @@
       "when": 1792092190992,
       "tag": "0005_wandering_crusher_hogan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792126792964,
+      "tag": "0006_high_human_fly",
+      "breakpoints": true
     }
   ]
 }

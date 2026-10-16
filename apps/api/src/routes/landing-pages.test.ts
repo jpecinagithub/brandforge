@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderLandingPreview } from './landing-pages.js';
+import { renderLandingPreview, verifyLandingSchema } from './landing-pages.js';
 
 describe('renderLandingPreview', () => {
   it('renders a responsive landing from the stored schema and brand kit', () => {
@@ -46,5 +46,25 @@ describe('renderLandingPreview', () => {
     expect(html).not.toContain('<svg onload');
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).toContain('--primary:#4c1d95');
+  });
+
+  it('only marks complete landing content as ready to publish', () => {
+    expect(verifyLandingSchema({
+      headline: 'A complete campaign',
+      subheadline: 'A useful supporting message.',
+      cta: 'Discover more',
+      sections: [{ heading: 'Benefit', body: 'A concrete reason to choose the offer.' }],
+    }).status).toBe('ready');
+
+    const incomplete = verifyLandingSchema({
+      headline: 'Draft',
+      subheadline: '',
+      cta: '',
+      sections: [],
+    });
+    expect(incomplete.status).toBe('needs_attention');
+    expect(incomplete.checks.subheadline).toBe(false);
+    expect(incomplete.checks.callToAction).toBe(false);
+    expect(incomplete.checks.sections).toBe(false);
   });
 });

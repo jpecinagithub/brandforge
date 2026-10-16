@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, CardContent, EmptyState, Input, Modal, Spinner } from '@brandforge/ui';
-import { ArrowLeft, Check, Download, ImagePlus, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
-import { del, get, patch, post, put, assetUrl, ApiError } from '@/lib/api';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, Download, Eye, ImagePlus, Megaphone, Pencil, Plus, Trash2 } from 'lucide-react';
+import { del, get, patch, post, put, assetDownloadUrl, assetUrl, ApiError } from '@/lib/api';
 import type { Asset, BrandKit, Campaign, CampaignDeliverable } from '@/lib/types';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { NewCampaignModal } from '@/components/NewCampaignModal';
@@ -90,32 +90,79 @@ function BrandKitTab({ campaignId, refreshKey }: { campaignId: string; refreshKe
 function AssetsTab({ campaignId, refreshKey }: { campaignId: string; refreshKey: number }) {
   const { t } = useTranslation();
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [verification, setVerification] = useState({ total: 0, available: 0, checkedAt: '' });
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const load = useCallback(async () => {
     setLoading(true);
-    try { setAssets((await get<{ assets: Asset[] }>(`/api/v1/campaigns/${campaignId}/assets`)).assets ?? []); }
-    catch { setAssets([]); } finally { setLoading(false); }
+    try {
+      const response = await get<{ assets: Asset[]; verification: { total: number; available: number; checkedAt: string } }>(`/api/v1/campaigns/${campaignId}/assets`);
+      setAssets(response.assets ?? []);
+      setVerification(response.verification ?? { total: 0, available: 0, checkedAt: '' });
+    } catch {
+      setAssets([]);
+      setVerification({ total: 0, available: 0, checkedAt: '' });
+    } finally { setLoading(false); }
   }, [campaignId]);
   useEffect(() => { void load(); }, [load, refreshKey]);
-  const upload = async (file: File) => {
+  const uploadFiles = async (files: File[]) => {
+    if (files.length === 0) return;
     setUploading(true);
     try {
-      const form = new FormData(); form.append('campaignId', campaignId); form.append('file', file);
-      const response = await post<{ asset: Asset }>('/api/v1/assets', form);
-      setAssets((current) => [response.asset, ...current]);
+      const created = await Promise.all(files.map(async (file) => {
+        const form = new FormData(); form.append('campaignId', campaignId); form.append('file', file);
+        return (await post<{ asset: Asset }>('/api/v1/assets', form)).asset;
+      }));
+      setAssets((current) => [...created, ...current]);
+      setVerification((current) => ({ ...current, total: current.total + created.length, available: current.available + created.length, checkedAt: new Date().toISOString() }));
     } finally { setUploading(false); }
   };
   if (loading) return <Loading />;
   return <div className="space-y-4">
-    <Card><CardContent><p className="mb-3 text-sm text-slate-500 dark:text-slate-400">{t('workspace.assetsHint')}</p>
+    <Card><CardContent><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><p className="text-sm text-slate-500 dark:text-slate-400">{t('workspace.assetsHint')}</p>
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${verification.total === verification.available ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300'}`}>
+        {verification.total === verification.available ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+        {t('workspace.assetsVerified', { available: verification.available, total: verification.total })}
+      </span></div>
       <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-violet-600/25 hover:bg-violet-500">
         {uploading ? <Spinner size="sm" /> : <ImagePlus size={16} />}{t('workspace.assetsUpload')}
-        <input type="file" accept="image/png,image/jpeg" multiple className="hidden" disabled={uploading} onChange={(event) => { const selected = Array.from(event.target.files ?? []); void Promise.all(selected.map(upload)); event.target.value = ''; }} />
+        <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="hidden" disabled={uploading} onChange={(event) => { const selected = Array.from(event.target.files ?? []); void uploadFiles(selected); event.target.value = ''; }} />
       </label>
     </CardContent></Card>
-    {assets.length === 0 ? <Card><EmptyState icon={<ImagePlus size={26} />} title={t('workspace.assetsEmpty')} /></Card> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{assets.map((asset) => <Card key={asset.id} className="overflow-hidden"><a href={assetUrl(asset)} target="_blank" rel="noreferrer" className="block"><img src={assetUrl(asset)} alt={asset.originalName} className="h-32 w-full object-cover" loading="lazy" /><p className="truncate px-3 py-2 text-xs text-slate-600 dark:text-slate-300" title={asset.originalName}>{asset.originalName}</p></a></Card>)}</div>}
+    {assets.length === 0 ? <Card><EmptyState icon={<ImagePlus size={26} />} title={t('workspace.assetsEmpty')} /></Card> : <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">{assets.map((asset) => <AssetCard key={asset.id} asset={asset} labels={{ ready: t('workspace.assetReady'), unavailable: t('workspace.assetUnavailable'), preview: t('workspace.assetPreview'), download: t('workspace.assetDownload') }} />)}</div>}
   </div>;
+}
+
+function AssetCard({ asset, labels }: { asset: Asset; labels: { ready: string; unavailable: string; preview: string; download: string } }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const available = asset.available && !imageFailed;
+  return (
+    <Card className="overflow-hidden">
+      <div className="relative h-44 bg-slate-100 dark:bg-slate-900">
+        {available ? (
+          <img src={assetUrl(asset)} alt={asset.originalName} className="h-full w-full object-contain" loading="lazy" onError={() => setImageFailed(true)} />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-amber-700 dark:text-amber-300"><AlertTriangle size={24} /><span className="text-xs">{labels.unavailable}</span></div>
+        )}
+        <span className={`absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold shadow-sm ${available ? 'bg-emerald-50/95 text-emerald-700' : 'bg-amber-50/95 text-amber-700'}`}>
+          {available ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}{available ? labels.ready : labels.unavailable}
+        </span>
+      </div>
+      <div className="space-y-2 p-3">
+        <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100" title={asset.originalName}>{asset.originalName}</p>
+        <p className="text-xs text-slate-400">{asset.mime} · {Math.max(1, Math.round(asset.sizeBytes / 1024))} KB</p>
+        <div className="flex gap-2">
+          {available ? <>
+            <a href={assetUrl(asset)} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"><Eye size={13} />{labels.preview}</a>
+            <a href={assetDownloadUrl(asset)} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-2 py-1.5 text-xs font-medium text-white hover:bg-violet-500"><Download size={13} />{labels.download}</a>
+          </> : <>
+            <span aria-disabled="true" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-400 opacity-50 dark:border-slate-700"><Eye size={13} />{labels.preview}</span>
+            <span aria-disabled="true" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-2 py-1.5 text-xs font-medium text-white opacity-40"><Download size={13} />{labels.download}</span>
+          </>}
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 export function CampaignWorkspace() {

@@ -50,6 +50,11 @@ export interface Asset {
   mime: string;
   sizeBytes: number;
   url: string;
+  downloadUrl: string;
+  available: boolean;
+  kind?: string;
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface ConversationMessage {
@@ -73,6 +78,18 @@ export interface LandingPage {
   campaignId: string;
   name: string;
   schema: unknown;
+  previewUrl: string;
+  publicUrl: string | null;
+  publishedAt: string | null;
+  verification: {
+    status: 'ready' | 'needs_attention';
+    checks: {
+      headline: boolean;
+      subheadline: boolean;
+      callToAction: boolean;
+      sections: boolean;
+    };
+  };
   createdAt: string;
   updatedAt?: string | null;
 }

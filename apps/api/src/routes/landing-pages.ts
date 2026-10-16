@@ -1,8 +1,10 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import { brandKits, landingPages, type Db } from '@brandforge/database';
 import { getDb } from '../db.js';
-import { Errors } from '../errors.js';
+import { Errors, sendError } from '../errors.js';
+import { audit, requestMeta } from '../authz.js';
 import { projectGuard } from './projects.js';
 import { config } from '../config.js';
 
@@ -10,6 +12,8 @@ interface PreviewSection {
   heading: string;
   body: string;
 }
+
+type Authed = FastifyRequest & { user: NonNullable<FastifyRequest['user']> };
 
 interface PreviewSchema {
   template: 'hero' | 'minimal';
@@ -47,6 +51,23 @@ function normalizeSchema(value: unknown): PreviewSchema {
     cta: text(raw.cta, 'Descubrir la campaña'),
     sections,
   };
+}
+
+export function verifyLandingSchema(value: unknown) {
+  const raw = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const sections = Array.isArray(raw.sections) ? raw.sections : [];
+  const checks = {
+    headline: text(raw.headline).length >= 3,
+    subheadline: text(raw.subheadline).length >= 5,
+    callToAction: text(raw.cta).length >= 2,
+    sections: sections.length > 0 && sections.every((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const section = item as Record<string, unknown>;
+      return text(section.heading ?? section.title).length > 0 && text(section.body).length > 0;
+    }),
+  };
+  const ready = Object.values(checks).every(Boolean);
+  return { status: ready ? 'ready' as const : 'needs_attention' as const, checks };
 }
 
 function escapeHtml(value: string): string {
@@ -124,6 +145,42 @@ export function renderLandingPreview(input: {
 export async function landingPageRoutes(app: FastifyInstance): Promise<void> {
   const db: Db = getDb();
 
+  const toLandingPageApi = (page: typeof landingPages.$inferSelect) => ({
+    id: page.id,
+    campaignId: page.projectId,
+    name: page.name,
+    schema: page.schema,
+    previewUrl: `/api/v1/landing-pages/${page.id}/preview`,
+    publicUrl: page.publicId ? `${config.frontendUrl}/showcase/landing/${page.publicId}` : null,
+    publishedAt: page.publishedAt?.toISOString() ?? null,
+    verification: verifyLandingSchema(page.schema),
+    createdAt: page.createdAt.toISOString(),
+    updatedAt: page.updatedAt?.toISOString() ?? null,
+  });
+
+  const sendPreview = async (
+    reply: FastifyReply,
+    page: typeof landingPages.$inferSelect,
+    visibility: 'private' | 'public',
+  ) => {
+    const [kit] = await db.select().from(brandKits).where(eq(brandKits.projectId, page.projectId)).limit(1);
+    const allowedFrameAncestors = config.corsOrigins
+      .map((origin) => origin.replace(/[^a-zA-Z0-9:/._-]/g, ''))
+      .join(' ');
+    reply.removeHeader('x-frame-options');
+    reply
+      .header('cache-control', visibility === 'public' ? 'public, max-age=60, stale-while-revalidate=300' : 'private, no-store')
+      .header('content-security-policy', `default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self' ${allowedFrameAncestors}`)
+      .header('referrer-policy', 'no-referrer')
+      .header('x-robots-tag', 'noindex, nofollow')
+      .type('text/html; charset=utf-8');
+    return renderLandingPreview({
+      name: page.name,
+      schema: page.schema,
+      brandKit: kit ? { brandName: kit.brandName, tagline: kit.tagline, colors: kit.colors } : null,
+    });
+  };
+
   const listLandingPages = async (request: FastifyRequest, reply: FastifyReply) => {
     const params = request.params as { projectId?: string; campaignId?: string };
     const projectId = params.campaignId ?? params.projectId ?? '';
@@ -134,7 +191,7 @@ export async function landingPageRoutes(app: FastifyInstance): Promise<void> {
       .from(landingPages)
       .where(eq(landingPages.projectId, projectId))
       .orderBy(asc(landingPages.createdAt));
-    return { landingPages: rows.map(({ projectId: campaignId, ...page }) => ({ ...page, campaignId })) };
+    return { landingPages: rows.map(toLandingPageApi) };
   };
   app.get('/api/v1/campaigns/:campaignId/landing-pages', { preHandler: [app.authenticate] }, listLandingPages);
   app.get('/api/v1/projects/:projectId/landing-pages', { preHandler: [app.authenticate] }, listLandingPages);
@@ -145,18 +202,51 @@ export async function landingPageRoutes(app: FastifyInstance): Promise<void> {
     if (!page) return Errors.notFound(reply);
     const project = await projectGuard(db, request, reply, page.projectId, 'viewer');
     if (!project) return;
-    const [kit] = await db.select().from(brandKits).where(eq(brandKits.projectId, page.projectId)).limit(1);
-    const allowedFrameAncestors = config.corsOrigins.map((origin) => origin.replace(/[^a-zA-Z0-9:/.\-_]/g, '')).join(' ');
-    reply.removeHeader('x-frame-options');
-    reply
-      .header('cache-control', 'private, no-store')
-      .header('content-security-policy', `default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self' ${allowedFrameAncestors}`)
-      .header('referrer-policy', 'no-referrer')
-      .type('text/html; charset=utf-8');
-    return renderLandingPreview({
-      name: page.name,
-      schema: page.schema,
-      brandKit: kit ? { brandName: kit.brandName, tagline: kit.tagline, colors: kit.colors } : null,
-    });
+    return sendPreview(reply, page, 'private');
+  });
+
+  app.post('/api/v1/landing-pages/:landingPageId/publish', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const req = request as Authed;
+    const { landingPageId } = request.params as { landingPageId: string };
+    const [page] = await db.select().from(landingPages).where(eq(landingPages.id, landingPageId)).limit(1);
+    if (!page) return Errors.notFound(reply);
+    const project = await projectGuard(db, request, reply, page.projectId, 'editor');
+    if (!project) return;
+    if (verifyLandingSchema(page.schema).status !== 'ready') {
+      return sendError(reply, 409, 'LANDING_NOT_READY', 'Complete the landing content before publishing it');
+    }
+    const now = new Date();
+    const [published] = await db
+      .update(landingPages)
+      .set({ publicId: page.publicId ?? randomUUID(), publishedAt: page.publishedAt ?? now, updatedAt: now })
+      .where(eq(landingPages.id, landingPageId))
+      .returning();
+    const { ip, userAgent } = requestMeta(request);
+    await audit(db, { userId: req.user.rawId, action: 'landing.publish', ip, userAgent, meta: { landingPageId } });
+    return { landingPage: toLandingPageApi(published) };
+  });
+
+  app.delete('/api/v1/landing-pages/:landingPageId/publish', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const req = request as Authed;
+    const { landingPageId } = request.params as { landingPageId: string };
+    const [page] = await db.select().from(landingPages).where(eq(landingPages.id, landingPageId)).limit(1);
+    if (!page) return Errors.notFound(reply);
+    const project = await projectGuard(db, request, reply, page.projectId, 'editor');
+    if (!project) return;
+    const [draft] = await db
+      .update(landingPages)
+      .set({ publicId: null, publishedAt: null, updatedAt: new Date() })
+      .where(eq(landingPages.id, landingPageId))
+      .returning();
+    const { ip, userAgent } = requestMeta(request);
+    await audit(db, { userId: req.user.rawId, action: 'landing.unpublish', ip, userAgent, meta: { landingPageId } });
+    return { landingPage: toLandingPageApi(draft) };
+  });
+
+  app.get('/api/v1/public/landing-pages/:publicId/preview', async (request, reply) => {
+    const { publicId } = request.params as { publicId: string };
+    const [page] = await db.select().from(landingPages).where(eq(landingPages.publicId, publicId)).limit(1);
+    if (!page || verifyLandingSchema(page.schema).status !== 'ready') return Errors.notFound(reply);
+    return sendPreview(reply, page, 'public');
   });
 }

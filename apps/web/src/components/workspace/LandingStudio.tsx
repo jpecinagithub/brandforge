@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, CardContent, EmptyState, Spinner } from '@brandforge/ui';
-import { ExternalLink, Globe2, Monitor, RefreshCw, Smartphone, Sparkles, Tablet } from 'lucide-react';
-import { apiUrl, get } from '@/lib/api';
+import { CheckCircle2, Copy, ExternalLink, Globe2, Link2, Lock, Monitor, RefreshCw, Smartphone, Sparkles, Tablet } from 'lucide-react';
+import { apiUrl, del, get, post } from '@/lib/api';
 import type { LandingPage } from '@/lib/types';
 
 type Device = 'desktop' | 'tablet' | 'mobile';
@@ -37,6 +37,9 @@ export function LandingStudio({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState(false);
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const selected = useMemo(
     () => pages.find((page) => page.id === selectedId) ?? null,
@@ -99,6 +102,49 @@ export function LandingStudio({
     return () => controller.abort();
   }, [selectedId, previewRefreshKey]);
 
+  const updatePage = (updated: LandingPage) => {
+    setPages((current) => current.map((page) => page.id === updated.id ? updated : page));
+  };
+
+  const publish = async () => {
+    if (!selected) return;
+    setPublishing(true);
+    setPublishError(false);
+    try {
+      const response = await post<{ landingPage: LandingPage }>(`/api/v1/landing-pages/${selected.id}/publish`);
+      updatePage(response.landingPage);
+    } catch {
+      setPublishError(true);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const unpublish = async () => {
+    if (!selected) return;
+    setPublishing(true);
+    setPublishError(false);
+    try {
+      const response = await del<{ landingPage: LandingPage }>(`/api/v1/landing-pages/${selected.id}/publish`);
+      updatePage(response.landingPage);
+    } catch {
+      setPublishError(true);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const copyPublicUrl = async () => {
+    if (!selected?.publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(selected.publicUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setPublishError(true);
+    }
+  };
+
   if (loading) {
     return <div className="flex h-64 items-center justify-center text-violet-600"><Spinner size="lg" /></div>;
   }
@@ -122,6 +168,12 @@ export function LandingStudio({
         <div>
           <h3 className="font-semibold text-slate-900 dark:text-white">{t('workspace.landingTitle')}</h3>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('workspace.landingDescription')}</p>
+          {selected ? (
+            <p className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${selected.verification.status === 'ready' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300' : 'bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300'}`}>
+              <CheckCircle2 size={13} />
+              {t(selected.verification.status === 'ready' ? 'workspace.landingVerified' : 'workspace.landingNeedsAttention')}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-900">
@@ -163,8 +215,39 @@ export function LandingStudio({
               {t('workspace.landingOpen')}
             </Button>
           )}
+          {selected?.publicUrl ? (
+            <>
+              <Button size="sm" icon={<ExternalLink size={15} />} onClick={() => window.open(selected.publicUrl!, '_blank', 'noopener,noreferrer')}>
+                {t('workspace.landingOpenPublic')}
+              </Button>
+              <Button size="sm" variant="secondary" icon={copied ? <CheckCircle2 size={15} /> : <Copy size={15} />} onClick={() => void copyPublicUrl()}>
+                {t(copied ? 'workspace.landingCopied' : 'workspace.landingCopyLink')}
+              </Button>
+              <Button size="sm" variant="secondary" icon={<Lock size={15} />} loading={publishing} onClick={() => void unpublish()}>
+                {t('workspace.landingUnpublish')}
+              </Button>
+            </>
+          ) : selected ? (
+            <Button
+              size="sm"
+              icon={<Link2 size={15} />}
+              loading={publishing}
+              disabled={selected.verification.status !== 'ready'}
+              onClick={() => void publish()}
+            >
+              {t('workspace.landingPublish')}
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {selected?.publicUrl ? (
+        <div className="flex min-w-0 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-400/10 dark:text-emerald-200">
+          <Globe2 size={14} className="shrink-0" />
+          <span className="truncate">{selected.publicUrl}</span>
+        </div>
+      ) : null}
+      {publishError ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-400/10 dark:text-amber-200" role="status">{t('workspace.landingPublishError')}</p> : null}
 
       <div className="grid min-w-0 gap-4">
         <Card>

@@ -14,6 +14,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { CampaignWorkspace } from '@/pages/CampaignWorkspace';
 import { Profile } from '@/pages/Profile';
 import { Admin } from '@/pages/Admin';
+import { PublicLandingPreview } from '@/pages/PublicLandingPreview';
 
 function LegacyCampaignRedirect() {
   const { id } = useParams();
@@ -34,6 +35,7 @@ export function App() {
             <Route path="/resend-verification" element={<ResendVerification />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/showcase/landing/:publicId" element={<PublicLandingPreview />} />
 
             {/* Private */}
             <Route path="/app" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>

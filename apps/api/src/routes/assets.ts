@@ -6,7 +6,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { assets, type Asset, type Db } from '@brandforge/database';
 import { getDb } from '../db.js';
 import { Errors, sendError } from '../errors.js';
@@ -16,17 +16,27 @@ import { ASSET_MAX_BYTES, assetStorageCandidates, buildObjectPath, detectImage, 
 
 type Authed = FastifyRequest & { user: NonNullable<FastifyRequest['user']> };
 
-export function toAssetApi(a: Asset) {
+export function toAssetApi(a: Asset, available = true) {
   return {
     id: a.id,
     originalName: a.originalName,
     mime: a.mime,
     sizeBytes: a.sizeBytes,
     url: `/api/v1/assets/${a.id}`,
+    downloadUrl: `/api/v1/assets/${a.id}?download=1`,
+    available,
     kind: a.kind,
     width: a.width,
     height: a.height,
   };
+}
+
+async function assetIsAvailable(a: Asset): Promise<boolean> {
+  const storage = getStorage();
+  for (const candidate of assetStorageCandidates(a.filename, a.workspaceId)) {
+    if (await storage.exists(candidate)) return true;
+  }
+  return false;
 }
 
 export async function assetRoutes(app: FastifyInstance): Promise<void> {
@@ -55,6 +65,10 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     const assetId = randomUUID();
     const rel = buildObjectPath('assets', assetId, `asset${detected.ext}`);
     await storage.put(rel, buf);
+    if (!(await storage.exists(rel))) {
+      await storage.remove(rel);
+      throw new Error('Uploaded asset could not be verified in storage');
+    }
     let row: Asset;
     try {
       [row] = await db
@@ -84,8 +98,20 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
     const projectId = params.campaignId ?? params.projectId ?? '';
     const p = await projectGuard(db, request, reply, projectId, 'viewer');
     if (!p) return;
-    const rows = await db.select().from(assets).where(eq(assets.projectId, projectId));
-    return { assets: rows.map(toAssetApi) };
+    const rows = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.projectId, projectId))
+      .orderBy(desc(assets.createdAt));
+    const verified = await Promise.all(rows.map(async (row) => toAssetApi(row, await assetIsAvailable(row))));
+    return {
+      assets: verified,
+      verification: {
+        total: verified.length,
+        available: verified.filter((asset) => asset.available).length,
+        checkedAt: new Date().toISOString(),
+      },
+    };
   };
   app.get('/api/v1/campaigns/:campaignId/assets', { preHandler: [app.authenticate] }, listAssets);
   app.get('/api/v1/projects/:projectId/assets', { preHandler: [app.authenticate] }, listAssets);
@@ -93,6 +119,7 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/v1/assets/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
     const req = request as Authed;
     const { id } = request.params as { id: string };
+    const download = (request.query as { download?: string }).download === '1';
     const [a] = await db.select().from(assets).where(eq(assets.id, id)).limit(1);
     if (!a) return Errors.notFound(reply);
     const role = await getMembership(db, req.user.rawId, a.workspaceId);
@@ -106,9 +133,12 @@ export async function assetRoutes(app: FastifyInstance): Promise<void> {
         // browser discard an otherwise-authorized <img> response. This only
         // permits cross-origin embedding; the session and workspace membership
         // checks above still protect the file itself.
+        const safeName = a.originalName.replace(/[^\x20-\x7e]|["\\]/g, '_');
+        const encodedName = encodeURIComponent(a.originalName);
         return reply
           .header('Cross-Origin-Resource-Policy', 'cross-origin')
           .header('Cache-Control', 'private, no-store')
+          .header('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename="${safeName}"; filename*=UTF-8''${encodedName}`)
           .type(a.mime)
           .header('content-length', data.length)
           .send(data);

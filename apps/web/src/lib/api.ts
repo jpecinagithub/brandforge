@@ -99,3 +99,7 @@ export const del = <T>(path: string, data?: unknown) =>
 export function assetUrl(asset: Asset): string {
   return mediaUrl(asset.url) ?? '';
 }
+
+export function assetDownloadUrl(asset: Asset): string {
+  return mediaUrl(asset.downloadUrl) ?? assetUrl(asset);
+}
