@@ -8,6 +8,21 @@ nginx vhost) is in git or trivially recreated.
 > `postgres`, volume `pgdata`. Adjust if `infrastructure/docker/docker-compose.yml`
 > names them differently.
 
+## Automated production backup
+
+Production uses the committed `infrastructure/backup/backup.sh` script. It creates an
+atomic PostgreSQL dump and an asset-volume snapshot together, validates both gzip
+streams, writes SHA-256 checksums and only then applies retention (14 days for the
+database, 30 days for assets).
+
+The Oracle crontab runs it every day at 03:15 Europe/Madrid:
+
+```bash
+15 3 * * * /home/ubuntu/apps/brandforge/infrastructure/backup/backup.sh >> /home/ubuntu/backups/brandforge/cron.log 2>&1
+```
+
+The sections below document the underlying manual procedure and restore steps.
+
 ## 1. Postgres — nightly pg_dump via cron
 
 **Purpose:** a compressed logical dump, kept 14 days locally (+ optionally copied

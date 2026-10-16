@@ -4,8 +4,8 @@ import { defineConfig } from '@playwright/test';
  * BrandForge E2E (Playwright, Chromium, headless).
  *
  * Spins up the REAL stack:
- *  - API  : /tmp/bf-run-api-test.sh → Fastify on :3014, brandforge_test DB,
- *           maildir at /tmp/bf-test-maildir, storage at /tmp/bf-test-storage.
+ *  - API  : committed launcher → Fastify on :3014, brandforge_test DB,
+ *           maildir and storage in the operating system's temporary folder.
  *  - Web  : `vite preview` on :4173 serving apps/web/dist, which must be
  *           built with VITE_API_URL=http://localhost:3014 (see tests/README).
  *
@@ -25,7 +25,8 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: '/tmp/bf-run-api-test.sh',
+      command: 'node tests/e2e/start-api.mjs',
+      cwd: '../..',
       port: 3014,
       reuseExistingServer: true,
       timeout: 60000,

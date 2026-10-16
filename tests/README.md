@@ -72,8 +72,8 @@ npm run test:e2e
 ```
 
 `tests/e2e/playwright.config.ts` starts both servers itself:
-- API via `/tmp/bf-run-api-test.sh` → `:3014`, `brandforge_test` DB, `/tmp/bf-test-*` dirs
-  (recreate that script if `/tmp` was wiped — see below).
+- API via the committed `tests/e2e/start-api.mjs` launcher → `:3014`,
+  `brandforge_test` DB and disposable OS temporary directories.
 - Web via `vite preview` on `:4173` serving `apps/web/dist`.
 
 | Spec | Covers |
@@ -82,6 +82,7 @@ npm run test:e2e
 | `tests/e2e/auth.spec.ts` | register → "Check your email" → verify via maildir token → login → New Campaign modal creates a project → logout → login again |
 | `tests/e2e/projects.spec.ts` | (demo session cookie) create project → favorite → create campaign → edit brand kit name → upload avatar PNG → delete project |
 | `tests/e2e/agent-chat.spec.ts` | Agentic chat UI: routed run creation and scriptable SSE events covering steps, tools, usage, approval, cancellation, polling fallback, restoration after reopen and run history |
+| `tests/e2e/deliverables.spec.ts` | Verified landing preview → publish → public render → revoke, plus asset availability and browser download |
 
 ### Agent-chat E2E strategy
 
@@ -93,28 +94,6 @@ like the `AgentRun` contract, and replaces `window.EventSource` (via
 cookie, project creation, the GET conversation reload after `run.finished` —
 goes through the real test API. The safe `AI_NOT_CONFIGURED` fallback stays
 covered against the real backend in `demo.spec.ts`.
-
-### If `/tmp` was wiped (VM restart)
-
-`/tmp/bf-run-api-test.sh`, `/tmp/bf-test-maildir` and `/tmp/bf-test-storage` are ephemeral.
-Recreate the launcher (it is intentionally NOT committed):
-
-```bash
-cat > /tmp/bf-run-api-test.sh <<'EOF'
-#!/bin/bash
-export DATABASE_URL=postgres://brandforge:brandforge_dev_pw@localhost:5432/brandforge_test
-export PORT=3014
-export NODE_ENV=development
-export CORS_ORIGIN="http://localhost:5173,http://localhost:4173"
-export MAIL_TRANSPORT=maildir
-export MAIL_FROM="noreply@brandforge.local"
-export MAILDIR_PATH="/tmp/bf-test-maildir"
-export STORAGE_PATH="/tmp/bf-test-storage"
-cd "$HOME/workspace/brandforge/apps/api"
-exec node dist/index.js
-EOF
-chmod +x /tmp/bf-run-api-test.sh
-```
 
 Note: the launcher runs `node dist/index.js` — rebuild the API (`npm run build
 --workspace=@brandforge/api`) after any `apps/api/src` change, or the E2E run will test
