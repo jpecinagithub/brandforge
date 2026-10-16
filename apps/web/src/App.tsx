@@ -13,6 +13,7 @@ import { ResetPassword } from '@/pages/ResetPassword';
 import { Dashboard } from '@/pages/Dashboard';
 import { CampaignWorkspace } from '@/pages/CampaignWorkspace';
 import { Profile } from '@/pages/Profile';
+import { Instructions } from '@/pages/Instructions';
 import { Admin } from '@/pages/Admin';
 import { PublicLandingPreview } from '@/pages/PublicLandingPreview';
 
@@ -43,6 +44,7 @@ export function App() {
               <Route path="campaigns/:id" element={<CampaignWorkspace />} />
               <Route path="projects/:id" element={<LegacyCampaignRedirect />} />
               <Route path="profile" element={<Profile />} />
+              <Route path="instructions" element={<Instructions />} />
               <Route path="admin" element={<AdminRoute><Admin /></AdminRoute>} />
             </Route>
 

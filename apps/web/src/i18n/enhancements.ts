@@ -1,4 +1,7 @@
 export const enEnhancements = {
+  nav: {
+    instructions: 'Instructions',
+  },
   common: {
     appUpdated: 'BrandForge has been updated to the latest version.',
   },
@@ -113,6 +116,9 @@ export const enEnhancements = {
 } as const;
 
 export const esEnhancements = {
+  nav: {
+    instructions: 'Instrucciones',
+  },
   common: {
     appUpdated: 'BrandForge se ha actualizado a la última versión.',
   },

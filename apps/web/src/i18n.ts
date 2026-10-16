@@ -26,6 +26,7 @@ void i18n.use(initReactI18next).init({
       translation: {
         ...en,
         common: { ...en.common, ...enEnhancements.common },
+        nav: { ...en.nav, ...enEnhancements.nav },
         agent: { ...en.agent, ...enEnhancements.agent },
         dashboard: { ...en.dashboard, ...enEnhancements.dashboard },
         landing: { ...en.landing, ...enEnhancements.landing },
@@ -38,6 +39,7 @@ void i18n.use(initReactI18next).init({
       translation: {
         ...es,
         common: { ...es.common, ...esEnhancements.common },
+        nav: { ...es.nav, ...esEnhancements.nav },
         agent: { ...es.agent, ...esEnhancements.agent },
         dashboard: { ...es.dashboard, ...esEnhancements.dashboard },
         landing: { ...es.landing, ...esEnhancements.landing },

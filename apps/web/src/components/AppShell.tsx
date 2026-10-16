@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Avatar, Button } from '@brandforge/ui';
-import { LayoutDashboard, User, ShieldCheck, LogOut, Menu, X } from 'lucide-react';
+import { BookOpenText, LayoutDashboard, User, ShieldCheck, LogOut, Menu, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/Logo';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -23,6 +23,7 @@ export function AppShell() {
 
   const navItems = [
     { to: '/app', label: t('nav.dashboard'), icon: <LayoutDashboard size={18} />, end: true },
+    { to: '/app/instructions', label: t('nav.instructions'), icon: <BookOpenText size={18} /> },
     { to: '/app/profile', label: t('nav.profile'), icon: <User size={18} /> },
     ...(user?.isAdmin ? [{ to: '/app/admin', label: t('nav.admin'), icon: <ShieldCheck size={18} /> }] : []),
   ];
