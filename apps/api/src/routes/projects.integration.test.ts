@@ -316,6 +316,7 @@ describe('project workspace flow', () => {
     });
     expect(preview.statusCode).toBe(200);
     expect(preview.headers['content-type']).toContain('text/html');
+    expect(preview.headers['cache-control']).toBe('no-store, max-age=0');
     expect(preview.body).toContain('A verified landing');
 
     const unpublish = await app.inject(

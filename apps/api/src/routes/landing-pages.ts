@@ -169,7 +169,9 @@ export async function landingPageRoutes(app: FastifyInstance): Promise<void> {
       .join(' ');
     reply.removeHeader('x-frame-options');
     reply
-      .header('cache-control', visibility === 'public' ? 'public, max-age=60, stale-while-revalidate=300' : 'private, no-store')
+      // Public links can be revoked at any time. Caching the HTML allowed a
+      // browser to keep showing a revoked campaign for several minutes.
+      .header('cache-control', visibility === 'public' ? 'no-store, max-age=0' : 'private, no-store')
       .header('content-security-policy', `default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'self' ${allowedFrameAncestors}`)
       .header('referrer-policy', 'no-referrer')
       .header('x-robots-tag', 'noindex, nofollow')

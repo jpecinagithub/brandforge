@@ -71,6 +71,15 @@ VITE_API_URL=http://localhost:3014 npm run build --workspace=@brandforge/web
 npm run test:e2e
 ```
 
+The delivery smoke test can also verify the deployed stack without starting
+local servers:
+
+```bash
+E2E_REMOTE_BASE_URL=https://brandforge-tan.vercel.app \
+E2E_API_URL=https://jpecina.duckdns.org/brandforge \
+npx playwright test --config tests/e2e/playwright.config.ts tests/e2e/deliverables.spec.ts
+```
+
 `tests/e2e/playwright.config.ts` starts both servers itself:
 - API via the committed `tests/e2e/start-api.mjs` launcher → `:3014`,
   `brandforge_test` DB and disposable OS temporary directories.

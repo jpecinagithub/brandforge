@@ -1,5 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
+const remoteBaseUrl = process.env.E2E_REMOTE_BASE_URL;
+
 /**
  * BrandForge E2E (Playwright, Chromium, headless).
  *
@@ -18,12 +20,12 @@ export default defineConfig({
   retries: 0,
   workers: 1, // specs share one API + DB; keep them sequential
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: remoteBaseUrl ?? 'http://localhost:4173',
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
-  webServer: [
+  webServer: remoteBaseUrl ? undefined : [
     {
       command: 'node tests/e2e/start-api.mjs',
       cwd: '../..',

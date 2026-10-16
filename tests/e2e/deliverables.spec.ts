@@ -1,14 +1,24 @@
 /** E2E: verified landing publication and asset delivery through the real UI. */
 import { test, expect } from '@playwright/test';
 
-const API = 'http://localhost:3014';
+const WEB = process.env.E2E_REMOTE_BASE_URL ?? 'http://localhost:4173';
+const API = process.env.E2E_API_URL ?? 'http://localhost:3014';
 
 test.beforeEach(async ({ page, request }) => {
   const response = await request.post(`${API}/api/v1/auth/demo`);
   expect(response.ok()).toBeTruthy();
   const token = /bf_session=([^;]+)/.exec(response.headers()['set-cookie'] ?? '')?.[1];
   expect(token).toBeTruthy();
-  await page.context().addCookies([{ name: 'bf_session', value: token!, domain: 'localhost', path: '/' }]);
+  const apiUrl = new URL(API);
+  await page.context().addCookies([{
+    name: 'bf_session',
+    value: token!,
+    domain: apiUrl.hostname,
+    path: '/',
+    secure: apiUrl.protocol === 'https:',
+    httpOnly: true,
+    sameSite: apiUrl.protocol === 'https:' ? 'None' : 'Lax',
+  }]);
 });
 
 test('landing is publishable and revocable; assets are visible and downloadable', async ({ page, context }) => {
@@ -17,7 +27,7 @@ test('landing is publishable and revocable; assets are visible and downloadable'
 
   await page.getByRole('tab', { name: 'Landing' }).click();
   await expect(page.getByText('Content verified and ready to publish')).toBeVisible();
-  await expect(page.frameLocator('iframe').getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.frameLocator('iframe:visible').first().getByRole('heading', { level: 1 })).toBeVisible();
 
   const publishResponsePromise = page.waitForResponse(
     (response) => response.url().includes('/api/v1/landing-pages/')
@@ -33,7 +43,7 @@ test('landing is publishable and revocable; assets are visible and downloadable'
   await expect(page.getByRole('button', { name: 'Open public page' })).toBeVisible();
 
   const publicPage = await context.newPage();
-  await publicPage.goto(`http://localhost:4173/showcase/landing/${publicId}`);
+  await publicPage.goto(`${WEB}/showcase/landing/${publicId}`);
   await expect(publicPage.frameLocator('iframe[title="Landing page"]').getByRole('heading', { level: 1 })).toBeVisible();
 
   const unpublishResponsePromise = page.waitForResponse(
